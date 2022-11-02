@@ -38,10 +38,6 @@ plot_contact_fit_state = False
 
 no_of_frames_to_drop_from_start_of_recording = 1001
 
-
-
-
-
 #%% Get list of participant folders/files
 # Data for each participant is stored within a folder. Names of files indicate which segment of remote study it is
 participants_list = np.array(os.listdir(data_directory))
@@ -54,7 +50,6 @@ if(validate_data):
         new_df = verify_remote_data(data_directory + "/" + participant)
         fit_states_signal_quality = fit_states_signal_quality.append(new_df)
     print("----FINISHED DATA CHECK FOR ALL PARTICIPANTS SEE ABOVE FOR OUTPUT----")    
-
 
 #%%
 def plot_sm_ppg(signal, events, participant_name):
@@ -223,8 +218,6 @@ def calculate_average_arousal_valence_ratings(video_events):
     video_end_index = None
     current_video_name = ""
     videos = []
-    
-    
     
     for i in range(0, len(video_events)):
         if(video_events['Event'].iloc[i] == "Playing rest video"):
@@ -513,6 +506,4 @@ for participant in participants_list:
    
     participant_counter = participant_counter + 1
 print("Finished processing data for: " + ParticipantObj.name)
-#%% test
-# calculate_good_signal_quality_duration(fastMovementData)
     
