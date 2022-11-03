@@ -4,15 +4,20 @@ Created on Wed Oct 20 21:23:58 2021
 
 @author: Michal Gnacek
 """
+
 import os
 import numpy as np
 import pandas as pd
-from verify_data_remote_video_study import verify_remote_data
-from util import FileType, getFileType
-from Participant import Participant
-from Video import Video
-import HRV_analysis_cloud as HRV
-import matplotlib.pyplot as plt
+
+from scripts.verify_data import verify_data as verify_data
+from utils.util import drop_start_frames
+from plots.plots import plot_sm_ppg, plot_fit_state
+from classes.Participant import Participant
+from analysis.average_ratings import calculate_average_arousal_valence_ratings, get_average_av_ratings_columns
+from analysis.durations import calculate_good_signal_quality_duration, calculate_signal_quality_check_duration, get_durations_columns
+from analysis.skip_participants import skip_participant
+
+import utils.HRV_analysis_cloud as HRV
 
 pd.options.mode.chained_assignment = None
 
@@ -26,8 +31,6 @@ process_slow_movement = False
 process_fast_movement = False
 process_video = True
 validate_data = True
-# Fit State treshold for good signal quality duration calculation. Fit State is an abstract continuous measurement of Mask ‘Fit' with higher values representing the ideal state of system performance/quality (https://support.emteqlabs.com/)
-fit_state_treshold = 8
 calculate_duration = False
 
 calculate_average_av_ratings = True
@@ -47,227 +50,17 @@ print("Found data folders for " + str(len(participants_list)) + " participants")
 if(validate_data):
     fit_states_signal_quality = pd.DataFrame(columns = ["participant_number", "slow_movement_signal_quality", "fast_movement_signal_quality", "video_movement_signal_quality", "protocol"])
     for participant in participants_list:
-        new_df = verify_remote_data(data_directory + "/" + participant)
+        new_df = verify_data(data_directory + "/" + participant)
         fit_states_signal_quality = fit_states_signal_quality.append(new_df)
     print("----FINISHED DATA CHECK FOR ALL PARTICIPANTS SEE ABOVE FOR OUTPUT----")    
-
-#%%
-def plot_sm_ppg(signal, events, participant_name):
-    df = signal[['Time', 'Ppg/Raw.ppg']]
-    plt.figure(figsize=(10,5))
-    #plt.step(df['Time'],df['Ppg/Raw.ppg'])
-    plt.plot(df['Time'].values,df['Ppg/Raw.ppg'].values)
-    plt.xlim([0, df['Time'].tail(1).item()])
-    #plt.step(np.arange(len(signal_to_analyze)),signal_to_analyze)
-    #plt.scatter(peak_indx, signal_to_analyze[peak_indx], color='red') #Plot detected peaks
-    plt.xlabel('Time(seconds)')
-    plt.title('Slow movement PPG and Events for' + participant_name)
-    plt.vlines(x=events['Time'], ymin=0, ymax=60000, colors='yellow', lw=2, label='vline_multiple - full height')
-
-#%%
-def plot_fit_state(signal, events, participant_name, file_type):
-    df = signal[['Time', 'Faceplate/FitState']]
-    plt.figure(figsize=(10,5))
-    #plt.step(df['Time'],df['Ppg/Raw.ppg'])
-    plt.plot(df['Time'].values,df['Faceplate/FitState'].values)
-    plt.xlim([0, df['Time'].tail(1).item()])
-    #plt.step(np.arange(len(signal_to_analyze)),signal_to_analyze)
-    #plt.scatter(peak_indx, signal_to_analyze[peak_indx], color='red') #Plot detected peaks
-    plt.xlabel('Time(seconds)')
-    plt.title(file_type + ' - ' + 'Contact FitState for ' + participant_name)
-    plt.savefig(get_plot_save_filepath("plots/contact_state", file_type, participant_name))
-    plt.title(file_type + ' - ' + 'Contact FitState and Events for ' + participant_name)
-    plt.vlines(x=events['Time'], ymin=0, ymax=10, colors='yellow', lw=2, label='vline_multiple - full height')
-    plt.savefig(get_plot_save_filepath("plots/contact_state_and_events", file_type, participant_name))
     
-    
-#%%
-def get_plot_save_filepath(plot_directory, file_type, participant_name):
-    figure_save_filepath = plot_directory
-    if('Slow Movement' in file_type):
-        figure_save_filepath = figure_save_filepath + '/slow_movemet_'
-    elif('Fast Movement' in file_type):
-        figure_save_filepath = figure_save_filepath + '/fast_movemet_'
-    elif('Video' in file_type):
-        figure_save_filepath = figure_save_filepath + '/video_movemet_'
-        if('1' in file_type):
-            figure_save_filepath = figure_save_filepath + '1'
-        elif('2' in file_type):
-            figure_save_filepath = figure_save_filepath + '2'
-        elif('3' in file_type):
-            figure_save_filepath = figure_save_filepath + '3'
-        elif('4' in file_type):
-            figure_save_filepath = figure_save_filepath + '4'
-        elif('5' in file_type):
-            figure_save_filepath = figure_save_filepath + '5'
-    return figure_save_filepath + participant_name + '.png'
-    
-    
-#%%
-def drop_start_frames(data):
-    return data.drop(data.index[0:no_of_frames_to_drop_from_start_of_recording])
 
-#%% calculates time in seconds where contactFitState was equal to or above 8 (average)
-def calculate_good_signal_quality_duration(data):
-    good_signal_duration = 0
-    time_taken_to_establish_good_signal = 0
-    current_signal_good_quality = False
-
-    for index, row in data.iterrows():
-        if(current_signal_good_quality==False):
-            if(row['Faceplate/FitState']>=fit_state_treshold):
-                current_signal_good_quality = True
-                good_signal_start_time = row['Time']
-                if(good_signal_duration==0):
-                    time_taken_to_establish_good_signal = row['Time']-data['Time'].iloc[0]
-        else:
-            if(row['Faceplate/FitState']<fit_state_treshold):
-                current_signal_good_quality = False
-                good_signal_end_time = row['Time']
-                good_signal_duration = good_signal_duration + (good_signal_end_time-good_signal_start_time)
-    if(current_signal_good_quality == True):
-        good_signal_duration = good_signal_duration + (data['Time'].iloc[-1]-good_signal_start_time)
-    return round(good_signal_duration,3), round(time_taken_to_establish_good_signal,3)
-
-#%%
-def calculate_signal_quality_check_duration(events):
-    if('Start of signal check' in events['Event'].iloc[0]):
-        signal_quality_check_start_time = events['Time'].iloc[0]
-        if(signal_quality_check_start_time>2**31): #due to DAB clock running fast, time is negative for the first few rows causing int32 underflow
-            signal_quality_check_start_time = signal_quality_check_start_time - 2**32 
-    else:
-        print('ERROR - No Start Signal Check message found to calculate signal check duration')
-    if('Signal check finished' in events['Event'].iloc[1]):
-        signal_quality_check_end_time = events['Time'].iloc[1]
-    else:
-        print('ERROR - No Signal Check Finished message found to calculate signal check duration')
-    return round((signal_quality_check_end_time-signal_quality_check_start_time),3)
-
-#%%
-def skip_participant(participantObject):
-   # if(participantObject.name == "participant_299"):
-       # participantObject.skip_fm = True
-   # if(participantObject.name == "participant_307"):
-        #participantObject.skip_video_1 = True
-   # if(participantObject.name == "participant_309"):
-    #    participantObject.skip_fm = True
-    # if(participantObject.name == "participant_310"):
-    #     participantObject.skip_video_1 = True
-    # if(participantObject.name == "participant_314"):
-    #     participantObject.skip_video_1 = True
-    if(participantObject.name == "participant_360_v2"): #sm file 0 data
-        participantObject.skip_sm = True
-    if(participantObject.name == "participant_375_v2"): #video 5 file missing
-        participantObject.skip_video_5 = True
-        participantObject.skip_video_4 = True
-        participantObject.skip_video_3 = True
-        participantObject.skip_video_2 = True
-        participantObject.skip_video_1 = True
-        participantObject.skip_video = True
-        participantObject.skip_fm = True
-        participantObject.skip_sm = True
-    if(participantObject.name == "participant_340_v2"): #poor fit
-        participantObject.skip_video_5 = True
-        participantObject.skip_video_4 = True
-        participantObject.skip_video_3 = True
-        participantObject.skip_video_2 = True
-        participantObject.skip_video_1 = True
-        participantObject.skip_video = True
-        participantObject.skip_fm = True
-        participantObject.skip_sm = True
-    if(participantObject.name == "participant_246"): #poor fit
-        participantObject.skip_video_5 = True
-        participantObject.skip_video_4 = True
-        participantObject.skip_video_3 = True
-        participantObject.skip_video_2 = True
-        participantObject.skip_video_1 = True
-        participantObject.skip_video = True
-        participantObject.skip_fm = True
-        participantObject.skip_sm = True
-    if(participantObject.name == "participant_307"): #high alexithymia
-        participantObject.skip_video_5 = True
-        participantObject.skip_video_4 = True
-        participantObject.skip_video_3 = True
-        participantObject.skip_video_2 = True
-        participantObject.skip_video_1 = True
-        participantObject.skip_video = True
-        participantObject.skip_fm = True
-        participantObject.skip_sm = True
-    if(participantObject.name == "participant_313"): #high alexithymia
-        participantObject.skip_video_5 = True
-        participantObject.skip_video_4 = True
-        participantObject.skip_video_3 = True
-        participantObject.skip_video_2 = True
-        participantObject.skip_video_1 = True
-        participantObject.skip_video = True
-        participantObject.skip_fm = True
-        participantObject.skip_sm = True
-    # if(participantObject.name == "participant_247"): #dab file starts about 2 seconds after first event timing issue
-    #     participantObject.skip_video = True
-    #     participantObject.skip_fm = True
-    #     participantObject.skip_sm = True
-    return participantObject
-
-#%%
-def calculate_average_arousal_valence_ratings(video_events):
-    rest_video_start_index = None
-    rest_video_end_index = None
-    playing_category_index = None
-    video_counter = 0
-    video_start_index = None
-    video_end_index = None
-    current_video_name = ""
-    videos = []
-    
-    for i in range(0, len(video_events)):
-        if(video_events['Event'].iloc[i] == "Playing rest video"):
-            rest_video_start_index = i
-            current_video_name = "relax"
-            for j in range(i, len(video_events)):
-                if(video_events['Event'].iloc[j] == "Finished playing rest video"):
-                    rest_video_end_index = j
-                    video_object = Video(video_events['Event'].iloc[rest_video_start_index:rest_video_end_index+1], current_video_name)
-                    videos.append(video_object)
-                    video_counter = video_counter + 1
-                    current_video_name = ""
-                    break
-        elif("Playing video number: " in video_events['Event'].iloc[i]):
-            video_start_index = i
-            current_video_name = video_events['Event'].iloc[i].split("number: ",1)[1]
-            for j in range(i, len(video_events)):
-                if(("Finished playing video number: "+ current_video_name) in video_events['Event'].iloc[j]):
-                    video_end_index =  j
-                    video_object = Video(video_events['Event'].iloc[video_start_index:video_end_index+1], current_video_name)
-                    videos.append(video_object)
-                    video_counter = video_counter + 1
-                    video_start_index = video_end_index = None
-                    current_video_name = ""
-                    break
-        # if("Playing category number: " in video_events[i]['Event']):
-        #     video_starting_index = i
-                
-    return videos
-
-#%% blabla
+#%% Main analysis script
 
 if(calculate_duration):
-    durations_columns = ["participant", 
-                          "slow_movement_total_duration", "slow_movement_total_good_fit", "slowMovementTimeTakenToEstablishGoodSignal","slow_movement_signal_check_duration", "slow_movement_duration_excluding_signal_check", "slow_movement_good_fit_excluding_signal_check",
-                          "fast_movement_total_duration", "fast_movement_total_good_fit", "fastMovementTimeTakenToEstablishGoodSignal", "fast_movement_signal_check_duration", "fast_movement_duration_excluding_signal_check", "fast_movement_good_fit_excluding_signal_check",
-                          "video_1_total_duration" ,"video_1_total_good_fit", "video_1_TimeTakenToEstablishGoodSignal", "video_1_signal_check_duration","video_1_duration_excluding_signal_check", "video_1_good_fit_excluding_signal_check",
-                          "video_2_duration", "video_2_good_fit",
-                          "video_3_duration", "video_3_good_fit",
-                          "video_4_duration", "video_4_good_fit",
-                          "video_5_duration", "video_5_good_fit"]
-    durations = pd.DataFrame(columns = durations_columns)
-
+    durations = pd.DataFrame(columns = get_durations_columns())
 if(calculate_average_av_ratings):
-     average_av_ratings_columns = ["participant", 
-                                   "relax_2_valence", "relax_2_arousal", "relax_2_no_ratings", "relax_3_valence", "relax_3_arousal", "relax_3_no_ratings", "relax_4_valence", "relax_4_arousal", "relax_4_no_ratings", "relax_5_valence", "relax_5_arousal", "relax_5_no_ratings",
-                                   "video_03_valence", "video_03_arousal", "video_03_no_ratings", "video_04_valence", "video_04_arousal", "video_04_no_ratings", "video_05_valence", "video_05_arousal", "video_05_no_ratings", "video_06_valence", "video_06_arousal", "video_06_no_ratings", "video_10_valence", "video_10_arousal", "video_10_no_ratings", "video_12_valence", "video_12_arousal", "video_12_no_ratings", "video_13_valence", "video_13_arousal", "video_13_no_ratings", "video_18_valence", "video_18_arousal", "video_18_no_ratings", "video_19_valence", "video_19_arousal", "video_19_no_ratings", "video_20_valence", "video_20_arousal", "video_20_no_ratings",
-                                   "video_21_valence", "video_21_arousal", "video_21_no_ratings", "video_22_valence", "video_22_arousal", "video_22_no_ratings", "video_23_valence", "video_23_arousal", "video_23_no_ratings", "video_25_valence", "video_25_arousal", "video_25_no_ratings", "video_29_valence", "video_29_arousal", "video_29_no_ratings", "video_31_valence", "video_31_arousal", "video_31_no_ratings", "video_33_valence", "video_33_arousal", "video_33_no_ratings", "video_37_valence", "video_37_arousal", "video_37_no_ratings", "video_38_valence", "video_38_arousal", "video_38_no_ratings", "video_39_valence", "video_39_arousal", "video_39_no_ratings",
-                                   "video_41_valence", "video_41_arousal", "video_41_no_ratings", "video_42_valence", "video_42_arousal", "video_42_no_ratings", "video_46_valence", "video_46_arousal", "video_46_no_ratings", "video_48_valence", "video_48_arousal", "video_48_no_ratings", "video_49_valence", "video_49_arousal", "video_49_no_ratings", "video_51_valence", "video_51_arousal", "video_51_no_ratings", "video_55_valence", "video_55_arousal", "video_55_no_ratings", "video_56_valence", "video_56_arousal", "video_56_no_ratings", "video_57_valence", "video_57_arousal", "video_57_no_ratings", "video_58_valence", "video_58_arousal", "video_58_no_ratings"]
-     average_av_ratings = pd.DataFrame(columns = average_av_ratings_columns)
+     average_av_ratings = pd.DataFrame(columns = get_average_av_ratings_columns())
 participant_counter = 1   
 #debug_counter = 1
 # debug_counter = 10
@@ -280,7 +73,6 @@ for participant in participants_list:
     #     participant = participants_list[debug_counter+participant_counter]
     ParticipantObj = Participant(participant, data_directory)
 
-    #ParticipantObj = Participant(participants_list[12], data_directory)
     print("Processing data for: " + ParticipantObj.name + ". " + str(participant_counter) + " out of " + str(len(participants_list)))
     ParticipantObj = skip_participant(ParticipantObj)
     if process_slow_movement:
@@ -288,7 +80,7 @@ for participant in participants_list:
             print("Slow movement Start")
             slowMovementData = ParticipantObj.getSlowMovementData()
             sm_events = slowMovementData[slowMovementData['Event'] != '']
-            slowMovementData = drop_start_frames(slowMovementData) #drop first 1000 frames/bug with timestamps
+            slowMovementData = drop_start_frames(slowMovementData, no_of_frames_to_drop_from_start_of_recording) #drop first 1000 frames/bug with timestamps
             if(calculate_duration):
                 slowMovementDuration = round((slowMovementData['Time'].iloc[-1] - slowMovementData['Time'].iloc[0]),3)
                 slowMovementSignalCheckDuration = calculate_signal_quality_check_duration(sm_events)
@@ -334,10 +126,9 @@ for participant in participants_list:
     if process_fast_movement:
         if(ParticipantObj.skip_fm == False):
             print("Fast movement Start")
-            #dummy process fast movement data
             fastMovementData = ParticipantObj.getFastMovementData()
             fm_events = fastMovementData[fastMovementData['Event'] != '']
-            fastMovementData = drop_start_frames(fastMovementData) #drop first 500 frames/bug with timestamps
+            fastMovementData = drop_start_frames(fastMovementData, no_of_frames_to_drop_from_start_of_recording) #drop first 500 frames/bug with timestamps
             if(calculate_duration):
                 fastMovementDuration = round((fastMovementData['Time'].iloc[-1] - fastMovementData['Time'].iloc[0]),3)
                 fastMovementGoodDuration, fastMovementTimeTakenToEstablishGoodSignal = calculate_good_signal_quality_duration(fastMovementData)
@@ -359,12 +150,11 @@ for participant in participants_list:
 
     if process_video:
         if(ParticipantObj.skip_video == False):
-            #dummy process video data
             print("Video Start")
             if(ParticipantObj.skip_video_1 == False):
                 video_1_data = ParticipantObj.getVideo1Data()
                 video_1_events = video_1_data[video_1_data['Event'] != '']
-                video_1_data = drop_start_frames(video_1_data)
+                video_1_data = drop_start_frames(video_1_data, no_of_frames_to_drop_from_start_of_recording)
                 if(calculate_duration):
                     video_1_duration = round((video_1_data['Time'].iloc[-1] - video_1_data['Time'].iloc[0]),3)
                     video_1_GoodDuration, video_1_TimeTakenToEstablishGoodSignal = calculate_good_signal_quality_duration(video_1_data)
@@ -388,7 +178,7 @@ for participant in participants_list:
                 video_2_events = video_2_data[video_2_data['Event'] != '']
                 if(calculate_average_av_ratings):
                     video_2_ratings = calculate_average_arousal_valence_ratings(video_2_events)
-                video_2_data = drop_start_frames(video_2_data)
+                video_2_data = drop_start_frames(video_2_data, no_of_frames_to_drop_from_start_of_recording)
                 if(calculate_duration):
                     video_2_duration = video_2_data['Time'].iloc[-1] - video_2_data['Time'].iloc[0]
                     video_2_GoodDuration, blank = calculate_good_signal_quality_duration(video_2_data)
@@ -404,7 +194,7 @@ for participant in participants_list:
                 video_3_events = video_3_data[video_3_data['Event'] != '']
                 if(calculate_average_av_ratings):
                     video_3_ratings = calculate_average_arousal_valence_ratings(video_3_events)
-                video_3_data = drop_start_frames(video_3_data)
+                video_3_data = drop_start_frames(video_3_data, no_of_frames_to_drop_from_start_of_recording)
                 if(calculate_duration):
                     video_3_duration = video_3_data['Time'].iloc[-1] - video_3_data['Time'].iloc[0]
                     video_3_GoodDuration, blank = calculate_good_signal_quality_duration(video_3_data)
@@ -420,7 +210,7 @@ for participant in participants_list:
                 video_4_events = video_4_data[video_4_data['Event'] != '']
                 if(calculate_average_av_ratings):
                     video_4_ratings = calculate_average_arousal_valence_ratings(video_4_events)
-                video_4_data = drop_start_frames(video_4_data)
+                video_4_data = drop_start_frames(video_4_data, no_of_frames_to_drop_from_start_of_recording)
                 if(calculate_duration):
                     video_4_duration = video_4_data['Time'].iloc[-1] - video_4_data['Time'].iloc[0]
                     video_4_GoodDuration, blank = calculate_good_signal_quality_duration(video_4_data)
@@ -436,7 +226,7 @@ for participant in participants_list:
                 video_5_events = video_5_data[video_5_data['Event'] != '']
                 if(calculate_average_av_ratings):
                     video_5_ratings = calculate_average_arousal_valence_ratings(video_5_events)
-                video_5_data = drop_start_frames(video_5_data)
+                video_5_data = drop_start_frames(video_5_data, no_of_frames_to_drop_from_start_of_recording)
                 if(calculate_duration):
                     video_5_duration = video_5_data['Time'].iloc[-1] - video_5_data['Time'].iloc[0]
                     video_5_GoodDuration, blank = calculate_good_signal_quality_duration(video_5_data)

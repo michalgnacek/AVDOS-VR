@@ -35,3 +35,6 @@ def getFileType(file_name):
         else:
             print("Unknown file type found:" + file_name)
             return FileType.OTHER
+
+def drop_start_frames(data, frames_to_drop):
+    return data.drop(data.index[0:frames_to_drop])

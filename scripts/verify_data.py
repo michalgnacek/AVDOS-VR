@@ -6,8 +6,8 @@ Created on Wed Apr 27 14:11:00 2021
 """
 
 import os
-import util
-import event_messages
+import utils.util as util
+import utils.event_messages as event_messages
 import re
 import pandas as pd
 
@@ -283,7 +283,7 @@ def __get_event_files(list_of_all_files):
 #%% Verify data files
 
 #main_wd = os.getcwd()
-def verify_remote_data(data_directory):
+def verify_data(data_directory):
     print(" Running data check for: ", data_directory)
     participant_number = data_directory.split("participant_")[1]
     if "v2" in participant_number:

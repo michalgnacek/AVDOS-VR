@@ -4,7 +4,7 @@ Created on Wed Nov 10 17:10:33 2021
 
 @author: Michal
 """
-from load_data import load_data
+from utils.load_data import load_data
 
 class Participant:
     
