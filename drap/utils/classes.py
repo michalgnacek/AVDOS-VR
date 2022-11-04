@@ -1,10 +1,23 @@
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# =============================================================================
+# Created By  : 
+#           Luis Quintero | luisqtr.com
+#           Michal Gnacek | gnacek.com
+# Created Date: 2022/04
+# =============================================================================
 """
-Created on Wed Nov 10 17:10:33 2021
+Classes to help loading DRAP in a structured way
+"""
+# =============================================================================
+# Imports
+# =============================================================================
 
-@author: Michal
-"""
-from utils.load_data import load_data
+from .load_data import load_data
+
+# =============================================================================
+# Classes
+# =============================================================================
 
 class Participant:
     
@@ -56,4 +69,34 @@ class Participant:
     def getVideo5Data(self):
         video_5_FilesPath = self.file_path + "/" + self.video_5_file_name
         return load_data(video_5_FilesPath + ".csv", True, video_5_FilesPath + ".json")
+
+
+class Video:
+
+    def __init__(self, events, name):
+        self.events = events
+        self.name = name
+        self.arousal_ratings = []
+        self.valence_ratings = []
+        for event in events:
+          if("Valence:" in event):
+                self.arousal_ratings.append(int(event.split("Arousal:",1)[1][0]))
+                self.valence_ratings.append(int(event.split("Valence:",1)[1][0]))
+        self.average_arousal = self.__average_rating(self.arousal_ratings)
+        self.average_valence = self.__average_rating(self.valence_ratings)
+                
+    def __average_rating(self, ratings_list):
+        sum = 0
+        if(ratings_list==[]):
+            return 0
+        else:
+            for rating in ratings_list:
+                sum = sum + rating
+            return round(sum/len(ratings_list),3)
+                    
+    def __average_arousal(self):
+        return  self.__average_rating(self.arousal_ratings)
+    
+    def __average_valence(self):
+        return self.__average_rating(self.valence_ratings)
     

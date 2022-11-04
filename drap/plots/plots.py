@@ -4,6 +4,8 @@ Created on Wed Nov  2 19:53:38 2022
 
 @author: Michal Gnacek
 """
+
+from ..utils.files_handler import check_or_create_folder
 import matplotlib.pyplot as plt
 
 #%%
@@ -28,7 +30,7 @@ def __get_plot_save_filepath(plot_directory, file_type, participant_name):
     return figure_save_filepath + participant_name + '.png'
 
 #%%
-def plot_sm_ppg(signal, events, participant_name):
+def plot_sm_ppg(signal, events, participant_name, root_folder=""):
     df = signal[['Time', 'Ppg/Raw.ppg']]
     plt.figure(figsize=(10,5))
     plt.plot(df['Time'].values,df['Ppg/Raw.ppg'].values)
@@ -36,16 +38,27 @@ def plot_sm_ppg(signal, events, participant_name):
     plt.xlabel('Time(seconds)')
     plt.title('Slow movement PPG and Events for' + participant_name)
     plt.vlines(x=events['Time'], ymin=0, ymax=60000, colors='yellow', lw=2, label='vline_multiple - full height')
+    path = __get_plot_save_filepath(root_folder+"plots/sm_ppg", "Slow Movement", participant_name)
+    check_or_create_folder(path)
+    plt.savefig(path)
+    plt.close()
 
 #%%
-def plot_fit_state(signal, events, participant_name, file_type):
+def plot_fit_state(signal, events, participant_name, file_type, root_folder=""):
     df = signal[['Time', 'Faceplate/FitState']]
     plt.figure(figsize=(10,5))
     plt.plot(df['Time'].values,df['Faceplate/FitState'].values)
     plt.xlim([0, df['Time'].tail(1).item()])
     plt.xlabel('Time(seconds)')
     plt.title(file_type + ' - ' + 'Contact FitState for ' + participant_name)
-    plt.savefig(__get_plot_save_filepath("plots/contact_state", file_type, participant_name))
+    path = __get_plot_save_filepath(root_folder+"plots/contact_state", file_type, participant_name)
+    check_or_create_folder(path)
+    plt.savefig(path)
+    plt.close()
+
     plt.title(file_type + ' - ' + 'Contact FitState and Events for ' + participant_name)
     plt.vlines(x=events['Time'], ymin=0, ymax=10, colors='yellow', lw=2, label='vline_multiple - full height')
-    plt.savefig(__get_plot_save_filepath("plots/contact_state_and_events", file_type, participant_name))
+    path = __get_plot_save_filepath(root_folder+"plots/contact_state_and_events", file_type, participant_name)
+    check_or_create_folder(path)
+    plt.savefig(path)
+    plt.close()

@@ -19,46 +19,17 @@ https://support.emteqlabs.com/data/CSV.html
 # =============================================================================
 
 import sys, os
-sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
+sys.path.append(os.path.join(os.path.dirname(__file__), "."))
 THIS_PATH = str(os.path.dirname(os.path.abspath(__file__)))
 
 # Import data manipulation libraries
 from copy import deepcopy
-from enum import Enum
+from utils.enums import EmgVars, EmgMuscles, SessionSegment
 
 # Import scientific 
-import numpy as np
 import pandas as pd
 
 import utils
-
-# =============================================================================
-# Enums
-# =============================================================================
-
-class EmgVars(Enum):
-    ContactStates = "ContactStates"
-    Contact = "Contact"
-    Raw = "Raw"
-    RawLift = "RawLift"
-    Filtered = "Filtered"
-    Amplitude = "Amplitude"
-    def __str__(self):
-        return super().value.__str__()
-
-class EmgMuscles(Enum):
-    """
-    Enum to access the Muscles from EMG
-    """
-    RightFrontalis = "RightFrontalis"
-    RightZygomaticus = "RightZygomaticus"
-    RightOrbicularis = "RightOrbicularis"
-    CenterCorrugator = "CenterCorrugator"
-    LeftOrbicularis = "LeftOrbicularis"
-    LeftZygomaticus = "LeftZygomaticus"
-    LeftFrontalis = "LeftFrontalis"
-    def __str__(self):
-        return super().value.__str__()
 
 # =============================================================================
 # Main
@@ -109,11 +80,9 @@ def GetColnamesBasicsNonEmg():
 
     return DATA_HEADSER_NON_EMG_BASICS
 
-class LoaderEmteqProMaskData():
-    """
-    Class to load 
-    """
-    
+
+class Manager():
+
     """Columns found on the CSV file after converting with DabTools"""
     DATA_HEADER_CSV = [
                 "Frame","Time","Faceplate/FaceState","Faceplate/FitState",
@@ -131,80 +100,7 @@ class LoaderEmteqProMaskData():
                 "Pressure/Raw"
                 ]
 
-    def __init__(self):
-        return
-
-    def load_single_csv_data(self, path_to_csv:str, 
-                                    columns:list=None, 
-                                    filter_wrong_timestamps:bool=True,
-                                    apply_reference_timestamp_J2000:bool = True,
-                                    filter_duplicates:bool = True):
-        """
-        Filepath to CSV file to load.
-
-        :param path_to_csv: Full path to CSV file to be loaded
-        :param columns: Subset of columns to extract. You may use `EmgPathMuscles` to generate the list
-        :param filter_wrong_timestamps: Remove the rows that contain timestamps <0 and >last_timestamp_in_file
-        :param apply_reference_timestamp_J2000: Convert the timestamps from Unix to J2000 using metadata "#Time/Seconds.referenceOffset"
-        :param filter_duplicates: Removes the duplicate rows from the pandas DataFrame, exclusing the timestamps in the index.
-
-        :return: Data and metadata
-        :rtype: A tuple with two pandas.DataFrames
-        """
-
-        # Metadata with the character '#'
-        metadata = pd.read_csv( path_to_csv, sep=",", engine="c", on_bad_lines='skip', header=0, names = ["metadata","value"])
-        metadata.set_index("metadata", inplace=True)
-        
-        # All lines that do not start with the character '#', therefore `comment="#"`
-        data = pd.read_csv( path_to_csv, sep=",", comment="#", engine="c", header=0, names=self.DATA_HEADER_CSV)
-
-        # Subselect some columns
-        if columns is not None:
-            data = data[ ["Time"] + columns ]
-        
-        # Filter data with invalid timestamps
-        if(filter_wrong_timestamps):
-            # Some timestamps carry over wrong timestamps due to high-freq data, 
-            # thus remove samples with values greater than time in the last row
-            data = data[ (data["Time"] < data["Time"].iloc[-1]) ]
-
-        # Time as index in the DF
-        data.set_index("Time", inplace=True)
-
-        # Convert timestamps
-        if (apply_reference_timestamp_J2000):
-            # Extract from the metadata the J2000 reference value
-            _ref_timestamp_J2000 = float(metadata["#Time/Seconds.referenceOffset"].value)
-            data.index += (_ref_timestamp_J2000) # Transform from secs to msec
-
-        # Most data should contain duplicates if the raw data @2KHz are not chosen
-        if filter_duplicates:
-            data.drop_duplicates(keep="first", inplace=True)
-
-        # TODO! # Convert values based on metadata
-        # if(apply_transformations_from_metadata):
-            # data = self.normalize_from_metadata(data, metadata)
-
-        return data, metadata
-
-
-class DatasetEmteqLabs():
-
-    class SessionSegment(Enum):
-        """
-        Enum to access the dictionary with the data per video
-        """
-        FastMovement = "fast_movement"
-        SlowMovement = "slow_movement"
-        video1 = "video_1"
-        video2 = "video_2"
-        video3 = "video_3"
-        video4 = "video_4"
-        video5 = "video_5"
-
-        def __str__(self):
-            return super().value.__str__()
+    
 
     # Structure of the dataset containing the data.
     # The values of the dict correspond to filename where data is stored
@@ -242,15 +138,17 @@ class DatasetEmteqLabs():
     _folder_data_path = ""    # Root folder of the original dataset
     _index_file_path = ""     # Filepath for the json file containing the index
 
+    # Debug
+    _verbose = False
+
     # Data Variables
-    loader_emteq_csv = None       # Object that handles the loading/unloading from EmteqPro CSV files
     index = None            # Dictionary with the dataset's index
     events = None           # Dictionary of Pandas DataFrame with Events
     segments = None         # Dictionary of Pandas DataFrame with Timestamps of each segment
     emotions = None         # Dictionary of Pandas DataFrame with Subjective Emotions
     data = None             # Dictionary of Pandas DataFrame with Emteq Data
 
-    def __init__(self, folder_path):
+    def __init__(self, folder_path, verbose=False):
         """
         This class loads the data from the remote video experiment.
         
@@ -290,8 +188,7 @@ class DatasetEmteqLabs():
         
         self._folder_data_path = folder_path
         self._index_file_path = os.path.join(self._folder_data_path, self.JSON_INDEX_FILENAME)
-
-        self.loader_emteq_csv = LoaderEmteqProMaskData()
+        self._verbose = verbose
 
         self.load_or_create_index()
         return
@@ -331,7 +228,7 @@ class DatasetEmteqLabs():
                     files_index[counter_idx] = deepcopy(self.PARTICIPANT_DATA_DICT)   # Empty dict for data
                     files_index[counter_idx]["folderid"] = directory.name.split("_")[1]
 
-                    # print(f"\nDirectory >> {directory.name}")
+                    if(self._verbose): print(f"\nDirectory >> {directory.name}")
 
                     # Store all the events in a new single .csv file
                     compiled_events = pd.DataFrame( deepcopy(self.PROCESSED_EVENTS_DICT) )
@@ -346,18 +243,18 @@ class DatasetEmteqLabs():
                             if(file.name.endswith(self.EVENTS_FILE_EXTENSION)):
                                 # File is an EVENT. Read it right away
 
-                                # print(f"\t Event>> {session_name}")
+                                if(self._verbose): print(f"\t Event>> {session_name}")
 
                                 this_event_df = self.__load_single_event_file_into_pandas(os.path.join(self._folder_data_path, 
                                                                                             directory.name, 
                                                                                             file.name), 
-                                                                                        session_name)
+                                                                                            session_name)
 
                                 compiled_events = pd.concat([compiled_events, this_event_df], ignore_index=True)
 
                             elif (file.name.endswith(self.DATA_FILE_EXTENSION) and (session_name in self.EXPERIMENT_SESSIONS_DICT.keys()) ):
-                                # # File is DATA, too large, just store the path.
-                                # print(f"\t Data>> {session_name}")
+                                # File is DATA, too large, just store the path.
+                                if(self._verbose):  print(f"\t Data>> {session_name}")
                                 files_index[counter_idx]["data"][session_name] = os.path.join(directory.name, file.name)
 
                     # Separate in two files the experimental events and valence/arousal ratings
@@ -465,6 +362,66 @@ class DatasetEmteqLabs():
                 self.emotions[id].drop_duplicates(keep="first", inplace=True)
         return
 
+    def __normalize_from_metadata():
+        # TODO! # 
+        pass
+
+    def __load_single_csv_data(self, path_to_csv:str, 
+                                    columns:list=None, 
+                                    filter_wrong_timestamps:bool=True,
+                                    apply_reference_timestamp_J2000:bool = True,
+                                    filter_duplicates:bool = True,
+                                    normalize_from_metadata:bool=True):
+        """
+        Filepath to CSV file to load.
+
+        :param path_to_csv: Full path to CSV file to be loaded
+        :param columns: Subset of columns to extract. You may use `EmgPathMuscles` to generate the list
+        :param filter_wrong_timestamps: Remove the rows that contain timestamps <0 and >last_timestamp_in_file
+        :param apply_reference_timestamp_J2000: Convert the timestamps from Unix to J2000 using metadata "#Time/Seconds.referenceOffset"
+        :param filter_duplicates: Removes the duplicate rows from the pandas DataFrame, exclusing the timestamps in the index.
+
+        :return: Data and metadata
+        :rtype: A tuple with two pandas.DataFrames
+        """
+
+        # Metadata with the character '#'
+        metadata = pd.read_csv( path_to_csv, sep=",", engine="c", on_bad_lines='skip', header=0, names = ["metadata","value"])
+        metadata.set_index("metadata", inplace=True)
+        
+        # All lines that do not start with the character '#', therefore `comment="#"`
+        data = pd.read_csv( path_to_csv, sep=",", comment="#", engine="c", header=0, names=self.DATA_HEADER_CSV)
+
+        # Subselect some columns
+        if columns is not None:
+            data = data[ ["Time"] + columns ]
+
+        # Filter data with invalid timestamps
+        if(filter_wrong_timestamps):
+            # Some timestamps carry over wrong timestamps due to high-freq data, 
+            # thus remove samples with values greater than time in the last row
+            data = data[ (data["Time"] < data["Time"].iloc[-1]) ]
+
+        # Time as index in the DF
+        data.set_index("Time", inplace=True)
+
+        # Convert timestamps
+        if (apply_reference_timestamp_J2000):
+            # Extract from the metadata the J2000 reference value
+            _ref_timestamp_J2000 = float(metadata["#Time/Seconds.referenceOffset"].value)
+            data.index += (_ref_timestamp_J2000) # Transform from secs to msec
+
+        # Convert values to corresponding units based on metadata
+        if(normalize_from_metadata):
+            data = self.__normalize_from_metadata(data, metadata)
+
+        # Most data should contain duplicates if the raw data @2KHz are not chosen
+        if filter_duplicates:
+            data.drop_duplicates(keep="first", inplace=True)
+
+        return data, metadata
+
+
     def load_data_from_participant(self, 
                                 participant_idx:int, 
                                 session_part:str, 
@@ -486,9 +443,9 @@ class DatasetEmteqLabs():
         full_path_to_file = os.path.join(self._folder_data_path, path_to_requested_file)
         print("Loading from: ", full_path_to_file)
 
-        return self.loader_emteq_csv.load_single_csv_data(full_path_to_file, 
-                                                            columns = columns,
-                                                            apply_reference_timestamp_J2000 = use_J2000_timestamps)
+        return self.__load_single_csv_data(full_path_to_file, 
+                                            columns = columns,
+                                            apply_reference_timestamp_J2000 = use_J2000_timestamps)
     
 
     def __load_single_event_file_into_pandas(self, 
@@ -654,5 +611,5 @@ if __name__ == "__main__":
     # main(args)
 
     print(" >>>> TESTING MANUALLY")
-    data_loader_etl2 = DatasetEmteqLabs(os.path.join(THIS_PATH,"../../datasets/DRAP/"))
+    data_loader_etl2 = Manager(os.path.join(THIS_PATH,"../data/"))
 

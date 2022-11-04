@@ -6,11 +6,13 @@
 # =============================================================================
 """
 Configuration file for dataset DRAP
-
 """
 # =============================================================================
 # Imports
 # =============================================================================
+
+import os
+THIS_PATH = str(os.path.dirname(os.path.abspath(__file__)))
 
 from enum import IntEnum, unique
 
@@ -42,19 +44,20 @@ class Classifiers(IntEnum):
 # GENERAL SETUP
 # =============================================================================
 
-# MAIN FOLDERS FOR OUTPUT FILES
-ROOT = "./"                 # Root folder for all files respect to the notebook: Use "../" to run IPython, or "./" to run from VSCode
+# Path to the participants' folder
+DATASET_ROOT_FOLDER = "../data/"
 
-DATASET_FOLDER = ROOT + "datasets/"  # Main directory for datasets
+# Used to generate the path of temporary subfolders
+DATASET_NAME = "DRAP"
+
+# MAIN FOLDERS FOR OUTPUT FILES
+ROOT = THIS_PATH + ""   # Root folder for all the files w.r.t this file
 
 SHOW_PLOTS = True           # Flag to avoid time-consuming plots that are already generated
 EXPORT_PLOTS = True         # Flag to generate files of the plots. Requires SHOW_PLOTS=True
 
-PLOT_FOLDER = ROOT+"plots/" # Main folder for plots
-IMG_FORMAT = ".png"         # Format to export the plots
-
 TEMP_FOLDER = ROOT+"temp/"  # Main folder for temp files with intermediate calculations
-TEMP_FORMAT = ".npy"     # Extension for temp files created with pickle
+TEMP_FORMAT = ".csv"     # Extension for temp files created with pickle
 
 RESULTS_FOLDER = ROOT+"results/"
 
@@ -63,16 +66,6 @@ PREFIX_DATASET = "dataset_"
 
 # WORKFLOW MANAGEMENT REGARDING ITERATIONS TO LOAD OR GENERATE FILES
 RELOAD_TRIES = 2            # Each step tries to create and load input_files maximum RELOAD_TRIES number of times
-
-##########################
-### DATASETS
-##########################
-
-# Input for the notebook
-DATASET_MAIN =  "DRAP" 
-
-# Original datasets
-DATASET_ROOT_FOLDER = DATASET_FOLDER + DATASET_MAIN + "/"
 
 ##########################
 ### CLASSIFIERS

@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # =============================================================================
-# Created By  : Luis Quintero | luisqtr.com
+# Created By  : 
+#           Luis Quintero | luisqtr.com
+#           Michal Gnacek | gnacek.com
 # Created Date: 2021/01/08
 # =============================================================================
 """
@@ -28,7 +30,7 @@ def check_or_create_folder(filename):
     return
 
 # %%
-def create_json(dictionary, json_path = "folder_tree.json", pretty=False):
+def create_json(dictionary, json_path = "filename.json", pretty=False):
     """
     Create a structured dictionary with the filenames of the
     files where the main data is located within the compressed dataset.
@@ -48,7 +50,7 @@ def create_json(dictionary, json_path = "folder_tree.json", pretty=False):
         return json_file
 
 # %%
-def load_json(json_path = "folder_tree.json"):
+def load_json(json_path = "filename.json"):
     """
     Loads in memory a structured dictionary saved with `create_json`
 

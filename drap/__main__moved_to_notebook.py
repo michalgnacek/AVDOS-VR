@@ -9,7 +9,7 @@ import os
 import numpy as np
 import pandas as pd
 
-from scripts.verify_data import verify_data as verify_data
+from verify_data import verify_data as verify_data
 from utils.util import drop_start_frames
 from plots.plots import plot_sm_ppg, plot_fit_state
 from classes.Participant import Participant

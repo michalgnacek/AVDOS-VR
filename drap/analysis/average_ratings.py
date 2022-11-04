@@ -5,7 +5,7 @@ Created on Wed Nov  2 21:23:02 2022
 @author: Michal Gnacek
 """
 
-from classes.Video import Video
+from ..utils.classes import Video
 
 #%%
 def calculate_average_arousal_valence_ratings(video_events):

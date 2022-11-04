@@ -6,23 +6,31 @@ Created on Wed Apr 27 14:11:00 2021
 """
 
 import os
-import utils.util as util
-import utils.event_messages as event_messages
 import re
+
 import pandas as pd
+from .utils import files_handler
+from .utils import event_messages
+
 
 #%% Set variables
 
-#data_directory = (r"E:\emteq-data-science\VR\python\data_preprocessing_scripts\michal\data\filip_panchevski")
 expected_number_of_all_files = 14
 expected_number_of_event_files = expected_number_of_all_files/2
 minimum_expected_signal_quality = 8
+
 # Setting this to true will print more messages
 is_debug = False
 create_quality_csv_output_file = True
 df = pd.DataFrame(columns = ["participant_number", "slow_movement_signal_quality", "fast_movement_signal_quality", "video_movement_signal_quality", "protocol"])
 
 #%% define methods
+
+def message_not_found(message):
+     print("Message not found: ", message)
+     
+def message_found(message):
+     print("Message found: ", message)
 
 def __check_slow_movement_event_data(slow_movement_event_data):
     slow_movement_study_issues_found = False;
@@ -31,17 +39,17 @@ def __check_slow_movement_event_data(slow_movement_event_data):
     if __is_segment_signal_quality_good(slow_movement_event_data[1]['Event'], "Slow movement segment") == False:
         slow_movement_study_issues_found = True
     if slow_movement_event_data[0]['Event'] != event_messages.SLOW_MOVEMENT_SIGNAL_CHECK_MESSAGE:
-        util.message_not_found(event_messages.SLOW_MOVEMENT_SIGNAL_CHECK_MESSAGE)
+        message_not_found(event_messages.SLOW_MOVEMENT_SIGNAL_CHECK_MESSAGE)
         slow_movement_study_issues_found = True
     else:
         if(is_debug):
-            util.message_found(event_messages.SLOW_MOVEMENT_SIGNAL_CHECK_MESSAGE)
+            message_found(event_messages.SLOW_MOVEMENT_SIGNAL_CHECK_MESSAGE)
     if slow_movement_event_data[len(slow_movement_event_data)-1]['Event'] != event_messages.SLOW_MOVEMENT_FINISHED_MESSAGE:
-        util.message_not_found(event_messages.SLOW_MOVEMENT_FINISHED_MESSAGE)
+        message_not_found(event_messages.SLOW_MOVEMENT_FINISHED_MESSAGE)
         slow_movement_study_issues_found = True
     else:
         if(is_debug):
-            util.message_found(event_messages.SLOW_MOVEMENT_FINISHED_MESSAGE)
+            message_found(event_messages.SLOW_MOVEMENT_FINISHED_MESSAGE)
     if slow_movement_study_issues_found:
         print("!!!!!!!!SLOW MOVEMENT SEGMENT ISSUE!!!!!!!!")
     else:
@@ -55,17 +63,17 @@ def __check_fast_movement_event_data(fast_movement_event_data):
     if __is_segment_signal_quality_good(fast_movement_event_data[1]['Event'], "Fast movement segment") == False:
         fast_movement_study_issues_found = True
     if fast_movement_event_data[0]['Event'] != event_messages.FAST_MOVEMENT_SIGNAL_CHECK_MESSAGE:
-        util.message_not_found(event_messages.FAST_MOVEMENT_SIGNAL_CHECK_MESSAGE)
+        message_not_found(event_messages.FAST_MOVEMENT_SIGNAL_CHECK_MESSAGE)
         fast_movement_study_issues_found = True
     else:
         if(is_debug):
-            util.message_found(event_messages.FAST_MOVEMENT_SIGNAL_CHECK_MESSAGE)
+            message_found(event_messages.FAST_MOVEMENT_SIGNAL_CHECK_MESSAGE)
     if fast_movement_event_data[len(fast_movement_event_data)-1]['Event'] != event_messages.FAST_MOVEMENT_FINISHED_MESSAGE:
-        util.message_not_found(event_messages.FAST_MOVEMENT_FINISHED_MESSAGE)
+        message_not_found(event_messages.FAST_MOVEMENT_FINISHED_MESSAGE)
         fast_movement_study_issues_found = True
     else:
         if(is_debug):
-            util.message_found(event_messages.FAST_MOVEMENT_FINISHED_MESSAGE)
+            message_found(event_messages.FAST_MOVEMENT_FINISHED_MESSAGE)
     if fast_movement_study_issues_found:
         print("!!!!!!!!FAST MOVEMENT SEGMENT ISSUE!!!!!!!!")
     else:
@@ -79,11 +87,11 @@ def __check_video_segment_1_event_data(video_segment_1_event_data):
     if __is_segment_signal_quality_good(video_segment_1_event_data[1]['Event'], "Video segment") == False:
         video_segment_1_issues_found = True
     if video_segment_1_event_data[0]['Event'] != event_messages.VIDEO_SIGNAL_CHECK_MESSAGE:
-        util.message_not_found(event_messages.VIDEO_SIGNAL_CHECK_MESSAGE)
+        message_not_found(event_messages.VIDEO_SIGNAL_CHECK_MESSAGE)
         video_segment_1_issues_found = True
     else:
         if(is_debug):
-            util.message_found(event_messages.VIDEO_SIGNAL_CHECK_MESSAGE)
+            message_found(event_messages.VIDEO_SIGNAL_CHECK_MESSAGE)
     
     for event in video_segment_1_event_data:
         category_sequence_names = re.search('Category sequence:(.*)', event['Event'])
@@ -151,34 +159,34 @@ def __check_video_segment_5_event_data(video_segment_5_event_data):
             if event_string == event_messages.VIDEO_PLAYING_REST_VIDEO:
                 playing_rest_video = True
                 if(is_debug):
-                    util.message_found(event_messages.VIDEO_PLAYING_REST_VIDEO)
+                    message_found(event_messages.VIDEO_PLAYING_REST_VIDEO)
         if finished_playing_rest_video == False:
             if event_string == event_messages.VIDEO_FINISHED_PLAYING_REST_VIDEO:
                 finished_playing_rest_video = True
                 if(is_debug):
-                    util.message_found(event_messages.VIDEO_FINISHED_PLAYING_REST_VIDEO)
+                    message_found(event_messages.VIDEO_FINISHED_PLAYING_REST_VIDEO)
         if finished_playing_all_videos == False:
             if event_string == event_messages.VIDEO_FINISHED_PLAYING_ALL_VIDEOS:
                 finished_playing_all_videos = True
                 if(is_debug):
-                   util.message_found(event_messages.VIDEO_FINISHED_PLAYING_ALL_VIDEOS)
+                   message_found(event_messages.VIDEO_FINISHED_PLAYING_ALL_VIDEOS)
         if finished_video_ratings_study == False:
             if event_string == event_messages.VIDEO_FINISHED_STUDY:
                 finished_video_ratings_study = True
                 if(is_debug):
-                    util.message_found(event_messages.VIDEO_FINISHED_STUDY)
+                    message_found(event_messages.VIDEO_FINISHED_STUDY)
                 
     if playing_rest_video == False:
-        util.message_not_found(event_messages.VIDEO_PLAYING_REST_VIDEO)
+        message_not_found(event_messages.VIDEO_PLAYING_REST_VIDEO)
         video_segment_5_issues_found = True
     if finished_playing_rest_video == False:
-        util.message_not_found(event_messages.VIDEO_FINISHED_PLAYING_REST_VIDEO)
+        message_not_found(event_messages.VIDEO_FINISHED_PLAYING_REST_VIDEO)
         video_segment_5_issues_found = True
     if finished_playing_all_videos == False:
-        util.message_not_found(event_messages.VIDEO_FINISHED_PLAYING_ALL_VIDEOS)
+        message_not_found(event_messages.VIDEO_FINISHED_PLAYING_ALL_VIDEOS)
         video_segment_5_issues_found = True
     if finished_video_ratings_study == False:
-        util.message_not_found(event_messages.VIDEO_FINISHED_STUDY)
+        message_not_found(event_messages.VIDEO_FINISHED_STUDY)
         video_segment_5_issues_found = True
                              
     if video_segment_5_issues_found:
@@ -204,12 +212,12 @@ def __check_video_segment_generic(video_segment_event_data, expected_video_categ
             if event_string == event_messages.VIDEO_PLAYING_REST_VIDEO:
                 playing_rest_video = True
                 if(is_debug):
-                    util.message_found(event_messages.VIDEO_PLAYING_REST_VIDEO)
+                    message_found(event_messages.VIDEO_PLAYING_REST_VIDEO)
         if finished_playing_rest_video == False:
             if event_string == event_messages.VIDEO_FINISHED_PLAYING_REST_VIDEO:
                 finished_playing_rest_video = True
                 if(is_debug):
-                    util.message_found(event_messages.VIDEO_FINISHED_PLAYING_REST_VIDEO)
+                    message_found(event_messages.VIDEO_FINISHED_PLAYING_REST_VIDEO)
         if playing_category == False:
             playing_category_found = re.search('Playing category number:(.*)', event_string)
             if(playing_category_found is not None):
@@ -225,16 +233,16 @@ def __check_video_segment_generic(video_segment_event_data, expected_video_categ
             if event_string == event_messages.VIDEO_CATEGORY_FINISHED:
                 category_finished = True
                 if(is_debug):
-                    util.message_found(event_messages.VIDEO_CATEGORY_FINISHED)
+                    message_found(event_messages.VIDEO_CATEGORY_FINISHED)
             
     if playing_rest_video == False:
-        util.message_not_found(event_messages.VIDEO_PLAYING_REST_VIDEO)
+        message_not_found(event_messages.VIDEO_PLAYING_REST_VIDEO)
         video_segment_issue = True
     if finished_playing_rest_video == False:
-        util.message_not_found(event_messages.VIDEO_FINISHED_PLAYING_REST_VIDEO)
+        message_not_found(event_messages.VIDEO_FINISHED_PLAYING_REST_VIDEO)
         video_segment_issue = True
     if category_finished == False:
-        util.message_not_found(event_messages.VIDEO_CATEGORY_FINISHED)
+        message_not_found(event_messages.VIDEO_CATEGORY_FINISHED)
         video_segment_issue = True
     if playing_video_number_counter < expected_video_number_counter:
         print("Not all videos finished playing. Played: ", playing_video_number_counter,"Expected: ", expected_video_number_counter)
@@ -299,9 +307,9 @@ def verify_data(data_directory):
             print("\nCorrect number of event files was found: ", number_of_files)
         # Check events files for expected events for a finished study
         #for file_index in range(6):
-        for file_index in range(7):
+        for file_index in range(number_of_files):
           file_to_check = data_directory + "/" + event_files[file_index]
-          data = util.read_jsonfile(file_to_check)
+          data = files_handler.load_json(file_to_check)
           if event_files[file_index] == "slow_movement.json":
               __check_slow_movement_event_data(data)
           elif event_files[file_index] == "fast_movement.json":

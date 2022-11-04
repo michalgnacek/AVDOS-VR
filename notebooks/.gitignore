@@ -1,10 +1,6 @@
-# Exclude datasets
-data/*
-# Keep datasets' readme
-!data/README.md
-
 # Temporary calculation
 temp/
+plots/
 
 #VS Code
 .vscode/
