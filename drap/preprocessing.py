@@ -24,9 +24,13 @@ THIS_PATH = str(os.path.dirname(os.path.abspath(__file__)))
 
 # Import data manipulation libraries
 from copy import deepcopy
+
+import utils.files_handler
+from utils import config
 from utils.enums import EmgVars, EmgMuscles, SessionSegment
 
 # Import scientific 
+import numpy as np
 import pandas as pd
 
 import utils
@@ -39,6 +43,7 @@ import utils
 def GetColnameEmg(emgvar:EmgVars, muscle:EmgMuscles):
     """
     Returns a string with the column name for Emg data
+    based on type of variable `emgvar` and facial `muscle`
     """
     return "Emg/" + str(emgvar) + "[" + str(muscle) + "]"
 
@@ -66,45 +71,14 @@ def GetColnamesBasicsNonEmg():
     """
     Returns a list of colnames with essential non-EMG data
     """
-    DATA_HEADSER_NON_EMG_BASICS = [
-                                    #"Time",    # Included by default in `load_single_csv_data()`
-                                    #"Frame",
-                                    "Faceplate/FaceState","Faceplate/FitState",
-                                    "HeartRate/Average","Ppg/Raw.ppg", 
-                                    "Ppg/Raw.proximity",
-                                    "Accelerometer/Raw.x","Accelerometer/Raw.y","Accelerometer/Raw.z",
-                                    "Magnetometer/Raw.x","Magnetometer/Raw.y","Magnetometer/Raw.z",
-                                    "Gyroscope/Raw.x","Gyroscope/Raw.y","Gyroscope/Raw.z",
-                                    "Pressure/Raw"
-                                ]
-
-    return DATA_HEADSER_NON_EMG_BASICS
+    return config.DATA_HEADSER_NON_EMG_BASICS
 
 
-class Manager():
-
-    """Columns found on the CSV file after converting with DabTools"""
-    DATA_HEADER_CSV = [
-                "Frame","Time","Faceplate/FaceState","Faceplate/FitState",
-                "Emg/ContactStates[RightFrontalis]","Emg/Contact[RightFrontalis]","Emg/Raw[RightFrontalis]","Emg/RawLift[RightFrontalis]","Emg/Filtered[RightFrontalis]","Emg/Amplitude[RightFrontalis]",
-                "Emg/ContactStates[RightZygomaticus]","Emg/Contact[RightZygomaticus]","Emg/Raw[RightZygomaticus]","Emg/RawLift[RightZygomaticus]","Emg/Filtered[RightZygomaticus]","Emg/Amplitude[RightZygomaticus]",
-                "Emg/ContactStates[RightOrbicularis]","Emg/Contact[RightOrbicularis]","Emg/Raw[RightOrbicularis]","Emg/RawLift[RightOrbicularis]","Emg/Filtered[RightOrbicularis]","Emg/Amplitude[RightOrbicularis]",
-                "Emg/ContactStates[CenterCorrugator]","Emg/Contact[CenterCorrugator]","Emg/Raw[CenterCorrugator]","Emg/RawLift[CenterCorrugator]","Emg/Filtered[CenterCorrugator]","Emg/Amplitude[CenterCorrugator]",
-                "Emg/ContactStates[LeftOrbicularis]","Emg/Contact[LeftOrbicularis]","Emg/Raw[LeftOrbicularis]","Emg/RawLift[LeftOrbicularis]","Emg/Filtered[LeftOrbicularis]","Emg/Amplitude[LeftOrbicularis]",
-                "Emg/ContactStates[LeftZygomaticus]","Emg/Contact[LeftZygomaticus]","Emg/Raw[LeftZygomaticus]","Emg/RawLift[LeftZygomaticus]","Emg/Filtered[LeftZygomaticus]","Emg/Amplitude[LeftZygomaticus]",
-                "Emg/ContactStates[LeftFrontalis]","Emg/Contact[LeftFrontalis]","Emg/Raw[LeftFrontalis]","Emg/RawLift[LeftFrontalis]","Emg/Filtered[LeftFrontalis]","Emg/Amplitude[LeftFrontalis]",
-                "HeartRate/Average","Ppg/Raw.ppg","Ppg/Raw.proximity",
-                "Accelerometer/Raw.x","Accelerometer/Raw.y","Accelerometer/Raw.z",
-                "Magnetometer/Raw.x","Magnetometer/Raw.y","Magnetometer/Raw.z",
-                "Gyroscope/Raw.x","Gyroscope/Raw.y","Gyroscope/Raw.z",
-                "Pressure/Raw"
-                ]
-
-    
+class Manager():  
 
     # Structure of the dataset containing the data.
     # The values of the dict correspond to filename where data is stored
-    EXPERIMENT_SESSIONS_DICT = { str(session) : "" for session in SessionSegment }
+    EXPERIMENT_SESSIONS_DICT = { str(segment) : "" for segment in SessionSegment }
 
     PROCESSED_EVENTS_DICT = {
             "Session": [],
@@ -114,23 +88,20 @@ class Manager():
 
     # Structure of the filepaths per user
     PARTICIPANT_DATA_DICT = {
-        "folderid": "",         # Name of the folder
+        "participant_id": "",         # Name of the folder
+        "protocol": "",         # Whether is v1 or v2
         "events": None,         # Events from all experiment segments are in a single file
         "segments": None,         # Timestamps for the beginning of the experiment segments
         "emotions": None,       # Subjective emotional data from all segments are in a single file
         "data": deepcopy(EXPERIMENT_SESSIONS_DICT),  # Data is stored per experiment session (>50MB/each file)
     }
 
-    ### CONSTANTS
-    DATA_FILE_EXTENSION = ".csv"
-    EVENTS_FILE_EXTENSION = ".json"
-    CONVERSION_TIMESTAMP_FROM_J2000_TO_UNIX = +946684800000 # in miliseconds
-
     # OUTPUT VALUES
     EVENTS_EXPERIMENT_FILENAME = "compiled_experimental_events.csv"
-    SEGMENT_TIMESTAMPS_EXPERIMENT_FILENAME = "compiled_segment_timestamps.csv"
-    EMOTIONS_SUBJECTIVE_FILENAME = "compiled_subjective_emotions.csv"
-    JSON_INDEX_FILENAME = "data_tree_index.json"
+    SEGMENT_TIMESTAMPS_EXPERIMENT_FILENAME = "compiled_protocol_segment.csv"
+    EMOTIONS_SUBJECTIVE_FILENAME = "compiled_emotion_ratings.csv"
+    JSON_INDEX_FILENAME = "drap_tree_index.json"
+    SUMMARY_DF_FILENAME = "summary_data.csv"
 
     # MAIN VARIABLES TO ACCESS DATA
 
@@ -143,14 +114,23 @@ class Manager():
 
     # Data Variables
     index = None            # Dictionary with the dataset's index
+    summary = None          # Pandas DataFrame summarizing the dataset
     events = None           # Dictionary of Pandas DataFrame with Events
     segments = None         # Dictionary of Pandas DataFrame with Timestamps of each segment
     emotions = None         # Dictionary of Pandas DataFrame with Subjective Emotions
     data = None             # Dictionary of Pandas DataFrame with Emteq Data
 
-    def __init__(self, folder_path, verbose=False):
+    def __init__(self, drap_folder_root:str, 
+                        verbose=False, 
+                        force_index_regeneration:bool=False, 
+                        index_files_path:str = None):
         """
-        This class loads the data from the remote video experiment.
+        Analyzes the folder to see which files are available.
+        Enables access to the variable `self.index`, which contains a 
+        dictionary with filepath to key `events`, `emotions` and `data`.
+
+        It  creates the json file at the root of the `index_files_path`
+        and individual .csv inside the participant's folder.
         
         A session consists of three segments: 
             1) slow movement, 2) fast movement, and 3) videos (1 to 5).
@@ -167,14 +147,15 @@ class Manager():
         Download link for original dataset: Request to Emteq Labs (emteqlabs.com/)
 
         The output of the data loading process is:
-            - data[0]["folderid"] > Returns the id of the participant's data
-            - data[0]["events"] > Returns a pandas dataframe with the experimental events
+            - data[0]["participant_id"] > Returns the id of the participant's data
+            - data[0]["protocol"] > Returns the type of experimental protocol conducted
+            - data[0]["events"]   > Returns the filepath for a pandas dataframe with the experimental events
                                     compiled among all the session segments.
-            - data[0]["segments"] > Returns a pandas DataFrame indicating the start of each of the
-                                    experimental stages (Videos: Negative, Neutral, Positive) or specific `videoId`
+            - data[0]["segments"] > Returns the filepath for a pandas DataFrame indicating the start of each of the
+                                    experimental stages (Videos: Negative, Neutral, Positive) and specific `videoId`
             - data[0]["emotions"] > Returns the subjective emotional values as reported
                                     by the participant, and stored in the `events.json`
-            - data[0]["data"]["session"] > Returns a `string` indicating where the data
+            - data[0]["data"]["segment"] > Returns a `string` indicating where the data
                         is located for the user `0` and the session `session`. The data needs
                         to be loaded individually because each file >50MB (~8GB in total)
 
@@ -184,34 +165,38 @@ class Manager():
 
         :param folder_path: Relative path to folder with data
         :type folder_path: str
+        :param force_index_regeneration: Forces regeneration of index, even if it exists:
+        :type force_index_regeneration: bool
+        :param index_files_path: Folder where the temp files for the index will be stored. If None, they
+                                are stored at the same level from the dataset in a folder called `temp/drap_index/`. 
+        :type index_files_path: str
+        :return: Dictionary
+        :rtype: dict
         """
         
-        self._folder_data_path = folder_path
-        self._index_file_path = os.path.join(self._folder_data_path, self.JSON_INDEX_FILENAME)
+        # Define where main dataset is stored
+        self._folder_data_path = drap_folder_root
+
+        # Define where temporary index files will be stored
+        _temp_folder_index_files = index_files_path if (index_files_path is not None) else os.path.join(self._folder_data_path,"../temp")
+        _temp_folder_index_files = os.path.join(_temp_folder_index_files, "drap_index/")
+        self._index_file_path = os.path.join(_temp_folder_index_files, self.JSON_INDEX_FILENAME)
+
+        # Debug Verbosity
         self._verbose = verbose
-
-        self.load_or_create_index()
-        return
-
-    def load_or_create_index(self):
-        """
-        Analyzes the folder to see which files are available.
-        Enables access to the variable `self.index`, which contains a 
-        dictionary with path to key event and data files.
-        It also creates the json file at the root of the dataset.
-
-        :return: Nothing
-        :rtype: None
-        """
-
-        # Entry condition
-        if(self.__load_index_file() is not None):
-            print("Index already exists: Loading from ", self._index_file_path)
-            return
         
-        ##### Create index from the dataset folder
-        print("There is no index yet! Creating it in ", self._index_file_path)
+        # Entry condition
+        if force_index_regeneration:
+            print("Forcing index construction: ", self._index_file_path)
+        else:
+            if(self.__load_index_file() is not None):
+                print("Index already exists: Loading from ", self._index_file_path)
+                return
+            
+            ##### Create index from the dataset folder
+            print("There is no index yet! Creating it in ", self._index_file_path)
     
+        ### GENERATING INDEX
         # Dictionary to store files
         files_index = {}
 
@@ -226,7 +211,8 @@ class Manager():
                     # Add the participant data to the file index.
                     # The index is a sequential number from `counter_idx`
                     files_index[counter_idx] = deepcopy(self.PARTICIPANT_DATA_DICT)   # Empty dict for data
-                    files_index[counter_idx]["folderid"] = directory.name.split("_")[1]
+                    files_index[counter_idx]["participant_id"] = directory.name.split("_")[1]
+                    files_index[counter_idx]["protocol"] = "v2" if ("v2" in directory.name) else "v1"
 
                     if(self._verbose): print(f"\nDirectory >> {directory.name}")
 
@@ -240,7 +226,7 @@ class Manager():
                             ## The session is defined by the filename (without extension)
                             session_name = file.name.split(".")[0]
 
-                            if(file.name.endswith(self.EVENTS_FILE_EXTENSION)):
+                            if(file.name.endswith(config.EVENTS_FILE_EXTENSION)):
                                 # File is an EVENT. Read it right away
 
                                 if(self._verbose): print(f"\t Event>> {session_name}")
@@ -252,28 +238,28 @@ class Manager():
 
                                 compiled_events = pd.concat([compiled_events, this_event_df], ignore_index=True)
 
-                            elif (file.name.endswith(self.DATA_FILE_EXTENSION) and (session_name in self.EXPERIMENT_SESSIONS_DICT.keys()) ):
+                            elif (file.name.endswith(config.DATA_FILE_EXTENSION) and (session_name in self.EXPERIMENT_SESSIONS_DICT.keys()) ):
                                 # File is DATA, too large, just store the path.
                                 if(self._verbose):  print(f"\t Data>> {session_name}")
-                                files_index[counter_idx]["data"][session_name] = os.path.join(directory.name, file.name)
+                                files_index[counter_idx]["data"][session_name] = os.path.join(self._folder_data_path, directory.name, file.name)
 
                     # Separate in two files the experimental events and valence/arousal ratings
                     complete_experiment_events, experimental_segments, subjective_affect_ratings = self.__separate_exp_stages_and_emotion_ratings(compiled_events)
 
                     # Save the .csv files
-                    filepath_temp = os.path.join(self._folder_data_path, directory.name, self.EVENTS_EXPERIMENT_FILENAME)
+                    filepath_temp = os.path.join(_temp_folder_index_files, directory.name, self.EVENTS_EXPERIMENT_FILENAME)
+                    utils.files_handler.check_or_create_folder(filepath_temp)
                     complete_experiment_events.to_csv(filepath_temp, index=True)
-                    filepath_temp = os.path.join(self._folder_data_path, directory.name, self.SEGMENT_TIMESTAMPS_EXPERIMENT_FILENAME)
+                    filepath_temp = os.path.join(_temp_folder_index_files, directory.name, self.SEGMENT_TIMESTAMPS_EXPERIMENT_FILENAME)
                     experimental_segments.to_csv(filepath_temp, index=True)
-                    filepath_temp = os.path.join(self._folder_data_path, directory.name, self.EMOTIONS_SUBJECTIVE_FILENAME)
+                    filepath_temp = os.path.join(_temp_folder_index_files, directory.name, self.EMOTIONS_SUBJECTIVE_FILENAME)
                     subjective_affect_ratings.to_csv(filepath_temp, index=True)
+                    if(self._verbose): print(f"\t Events compiled in {filepath_temp}")
 
                     # Add to the index the separate files.
-                    files_index[counter_idx]["events"] = os.path.join(directory.name, self.EVENTS_EXPERIMENT_FILENAME)
-                    files_index[counter_idx]["segments"] = os.path.join(directory.name, self.SEGMENT_TIMESTAMPS_EXPERIMENT_FILENAME)
-                    files_index[counter_idx]["emotions"] = os.path.join(directory.name, self.EMOTIONS_SUBJECTIVE_FILENAME)
-
-                    print(f"\t Events compiled in {filepath_temp}")
+                    files_index[counter_idx]["events"] =    os.path.join(_temp_folder_index_files,directory.name, self.EVENTS_EXPERIMENT_FILENAME)
+                    files_index[counter_idx]["segments"] =  os.path.join(_temp_folder_index_files,directory.name, self.SEGMENT_TIMESTAMPS_EXPERIMENT_FILENAME)
+                    files_index[counter_idx]["emotions"] =  os.path.join(_temp_folder_index_files,directory.name, self.EMOTIONS_SUBJECTIVE_FILENAME)
 
                     # Prepare for next data
                     counter_idx = counter_idx + 1
@@ -281,21 +267,34 @@ class Manager():
         print(f"A total of {counter_idx} folders were found in the dataset")
 
         # Store the files in a JSON
-        utils.create_json(files_index, self._index_file_path)
+        utils.files_handler.create_json(files_index, self._index_file_path)
 
         print(f"Json file with index of the dataset was saved in {self._index_file_path}")
 
         # Global variable for the index
         self.index = files_index.copy()
+
+        # Load the summary, events, emotions, and segments. Not data because it is too large.
+        self.load_event_files()
+        self.load_emotion_files()
+        self.load_segments_files()
+        self.summary =  self.__load_summary_df()
+
+        # Save summary file
+        filepath_temp = os.path.join(_temp_folder_index_files, directory.name, self.SUMMARY_DF_FILENAME)
+        utils.files_handler.check_or_create_folder(filepath_temp)
+        self.summary.to_csv(filepath_temp, index=False)
         return
 
     def __load_index_file(self):
         """
         Loads the dictionary with the index file into memory.
+        The participant id is loaded as integer
         If error, returns None
         """
         try:  
-            self.index = utils.load_json(self._index_file_path)
+            self.index = utils.files_handler.load_json(self._index_file_path)
+            # Accessing the participants as numeric ids, not as strings
             self.index = { int(k):v for k,v in self.index.items() }
             return 0
         except:
@@ -311,14 +310,13 @@ class Manager():
         :rtype: Pandas DataFrame
         """
         if self.index is None:
-            print("There is no index file loaded, loading index file...")
-            self.load_or_create_index()
+            print("There is no index file loaded, Create an index of the dataset...")
         else:
             ### Load events in dictionary
             self.events = {}
             for id, evt_path in self.index.items():
                 # Iterate over participants
-                self.events[id] = pd.read_csv(os.path.join(self._folder_data_path, evt_path["events"]), index_col="Time")
+                self.events[id] = pd.read_csv(os.path.join(self._folder_data_path, evt_path["events"]), index_col=config.TIME_COLNAME)
         return
 
     def load_segments_files(self):
@@ -331,14 +329,13 @@ class Manager():
         :rtype: Pandas DataFrame
         """
         if self.index is None:
-            print("There is no index file loaded, loading index file...")
-            self.load_or_create_index()
+            print("There is no index file loaded, Create an index of the dataset...")
         else:
             ### Load events in dictionary
             self.segments = {}
             for id, evt_path in self.index.items():
                 # Iterate over participants
-                self.segments[id] = pd.read_csv(os.path.join(self._folder_data_path, evt_path["segments"]), index_col="Time")
+                self.segments[id] = pd.read_csv(os.path.join(self._folder_data_path, evt_path["segments"]), index_col=config.TIME_COLNAME)
         return
 
     def load_emotion_files(self):
@@ -351,16 +348,65 @@ class Manager():
         :rtype: Pandas DataFrame
         """
         if self.index is None:
-            print("There is no index file loaded, loading index file...")
-            self.load_or_create_index()
+            print("There is no index file loaded, Create an index of the dataset...")
         else:
             ### Load events in dictionary
             self.emotions = {}
             for id, evt_path in self.index.items():
                 # Iterate over participants
-                self.emotions[id] = pd.read_csv(os.path.join(self._folder_data_path, evt_path["emotions"]), index_col="Time")
+                self.emotions[id] = pd.read_csv(os.path.join(self._folder_data_path, evt_path["emotions"]), index_col=config.TIME_COLNAME)
                 self.emotions[id].drop_duplicates(keep="first", inplace=True)
         return
+
+    def __load_summary_df(self):
+        """
+        Takes the index, events, emotions, and segments to create a compiled 
+        dataframe that summarizes the data.
+        """
+        df_sum = None
+        for pid,pdata in self.index.items():
+            print(f"Participant {pid} with folder id: {pdata['participant_id']} was part of protocol: {pdata['protocol']}")
+
+            # Summary grouped per session segment    
+            for segtype in self.events[pid]["Session"].unique():
+                
+                ######
+                # Summary of events
+                events_data = self.events[pid]
+                Q = ( (events_data["Session"] == segtype) )
+                event_filtered = events_data[Q].reset_index()
+
+                ######
+                # Summary of emotions
+                emotions_data = self.emotions[pid]
+                Q = ( (emotions_data["Session"] == segtype) )
+                emotions_filtered = emotions_data[Q].reset_index()
+
+                # Summarize dataframe
+                current_summary = {
+                            # "index_id": pid,
+                            # "participant_id": pdata['participant_id'],
+                            # "protocol": pdata['protocol'],
+                            "Segment":segtype,
+                            "Events_N": event_filtered.shape[0],
+                            "Events_duration": event_filtered["Time"].iloc[-1] - event_filtered["Time"].iloc[0],
+                            "Emotions_N": emotions_filtered.shape[0],
+                            "Emotions_duration": (emotions_filtered["Time"].iloc[-1] - emotions_filtered["Time"].iloc[0]) if emotions_filtered.shape[0]>0 else np.nan,
+                            "Emotions_Valence_avg": emotions_filtered["Valence"].mean(),
+                            "Emotions_Arousal_avg": emotions_filtered["Arousal"].mean()
+                        }
+
+                # Convert from values to list, to adapt to DataFrame
+                current_summary = { k:[v] for k,v in current_summary.items() }
+                current_summary = pd.DataFrame.from_dict(current_summary)
+
+                df_sum = current_summary if (df_sum is None) else pd.concat([df_sum, current_summary], ignore_index=True)
+            
+            # Insert participant's data
+            current_summary.insert(0, "protocol", value=pdata['protocol'])
+            current_summary.insert(0, "participant_id", value= pdata['participant_id'])
+            current_summary.insert(0, "index_id", value=pid)
+        return df_sum
 
     def __normalize_from_metadata():
         # TODO! # 
@@ -390,20 +436,20 @@ class Manager():
         metadata.set_index("metadata", inplace=True)
         
         # All lines that do not start with the character '#', therefore `comment="#"`
-        data = pd.read_csv( path_to_csv, sep=",", comment="#", engine="c", header=0, names=self.DATA_HEADER_CSV)
+        data = pd.read_csv( path_to_csv, sep=",", comment="#", engine="c", header=0, names=config.DATA_HEADER_CSV)
 
         # Subselect some columns
         if columns is not None:
-            data = data[ ["Time"] + columns ]
+            data = data[ [config.TIME_COLNAME] + columns ]
 
         # Filter data with invalid timestamps
         if(filter_wrong_timestamps):
             # Some timestamps carry over wrong timestamps due to high-freq data, 
             # thus remove samples with values greater than time in the last row
-            data = data[ (data["Time"] < data["Time"].iloc[-1]) ]
+            data = data[ (data[config.TIME_COLNAME] < data[config.TIME_COLNAME].iloc[-1]) ]
 
         # Time as index in the DF
-        data.set_index("Time", inplace=True)
+        data.set_index(config.TIME_COLNAME, inplace=True)
 
         # Convert timestamps
         if (apply_reference_timestamp_J2000):
@@ -455,7 +501,7 @@ class Manager():
         """
         Loads a file with events into a structured dictionary
         """
-        dict_from_json = utils.load_json(event_filepath)
+        dict_from_json = utils.files_handler.load_json(event_filepath)
         
         # Transform to simpler dict compatible with Pandas
         organized_dict = deepcopy(self.PROCESSED_EVENTS_DICT)
@@ -473,7 +519,7 @@ class Manager():
 
         # Convert from J2000 (in miliseconds) to Unix (in seconds)
         if(convert_J2000_to_unix_seconds):
-            df["Timestamp"] = ( df["Timestamp"] + self.CONVERSION_TIMESTAMP_FROM_J2000_TO_UNIX ) / 1e3
+            df["Timestamp"] = ( df["Timestamp"] + config.CONVERSION_TIMESTAMP_FROM_J2000_TO_UNIX ) / 1e3
 
         return df
 
@@ -492,7 +538,7 @@ class Manager():
         all_non_affect_events = df[ ~QUERY_FILTER ]
 
         all_non_affect_events.set_index("Timestamp", inplace=True)
-        all_non_affect_events.index.rename("Time", inplace=True)
+        all_non_affect_events.index.rename(config.TIME_COLNAME, inplace=True)
         
         timestamped_start_end_segments = self.__process_long_events_to_extract_experimental_segments(all_non_affect_events)
 
@@ -503,7 +549,7 @@ class Manager():
 
         # Change index
         subjective_affect_data.set_index("Timestamp", inplace=True)
-        subjective_affect_data.index.rename("Time", inplace=True)
+        subjective_affect_data.index.rename(config.TIME_COLNAME, inplace=True)
 
         # Extract the emotional data from the string. First splitting by "," and then by ":" every two values
         emotions = subjective_affect_data["Event"].str.split(",").apply(lambda x: [v.split(":")[1] for v in x])
@@ -522,7 +568,7 @@ class Manager():
     def __process_long_events_to_extract_experimental_segments(self, experimental_events):
         """
         Extract the starting time and end time of each of the experimental stages. 
-        To be used as class labels for the TS
+        To be used to segment the TS between stages
         """
 
         VIDEO_ID_FOR_RESTING_VIDEO = -1
@@ -578,7 +624,7 @@ class Manager():
         tstamps_total_segments = pd.concat([tstamps_start_videos,tstamps_start_rest,tstamps_end_videos,tstamps_end_rest])
         tstamps_total_segments.drop("Event", axis=1, inplace=True)
         tstamps_total_segments.sort_index(inplace=True)
-        # tstamps_total_segments.reset_index(inplace=True) ## Do not uncomment, loading scripts always look for "Time" as index
+        # tstamps_total_segments.reset_index(inplace=True) ## Do not uncomment, loading scripts always look for "Time" (config.DATA_HEADER_CSV) as index
 
         return tstamps_total_segments
 

@@ -9,7 +9,7 @@ import json
 import re
 from io import StringIO
 
-def load_data(path_to_data, events_file, path_to_event_markers = "", exact_event_matching = True, newLabels = True): 
+def load_data_with_event_matching(path_to_data, events_file, path_to_event_markers = "", exact_event_matching = True, newLabels = True): 
     '''
      """The function reads the data from a specified path and formats it into
      the required structure for further processing.

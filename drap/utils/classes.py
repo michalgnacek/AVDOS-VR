@@ -13,7 +13,7 @@ Classes to help loading DRAP in a structured way
 # Imports
 # =============================================================================
 
-from .load_data import load_data
+from .load_data import load_data_with_event_matching
 
 # =============================================================================
 # Classes
@@ -44,31 +44,31 @@ class Participant:
         
     def getSlowMovementData(self):
         slowMovementFilesPath = self.file_path + "/" + self.sm_file_name
-        return load_data(slowMovementFilesPath + ".csv", True, slowMovementFilesPath + ".json")
+        return load_data_with_event_matching(slowMovementFilesPath + ".csv", True, slowMovementFilesPath + ".json")
     
     def getFastMovementData(self):
         fastMovementFilesPath = self.file_path + "/" + self.fm_file_name
-        return load_data(fastMovementFilesPath + ".csv", True, fastMovementFilesPath + ".json")
+        return load_data_with_event_matching(fastMovementFilesPath + ".csv", True, fastMovementFilesPath + ".json")
     
     def getVideo1Data(self):
         video_1_FilesPath = self.file_path + "/" + self.video_1_file_name
-        return load_data(video_1_FilesPath + ".csv", True, video_1_FilesPath + ".json")
+        return load_data_with_event_matching(video_1_FilesPath + ".csv", True, video_1_FilesPath + ".json")
     
     def getVideo2Data(self):
         video_2_FilesPath = self.file_path + "/" + self.video_2_file_name
-        return load_data(video_2_FilesPath + ".csv", True, video_2_FilesPath + ".json")
+        return load_data_with_event_matching(video_2_FilesPath + ".csv", True, video_2_FilesPath + ".json")
     
     def getVideo3Data(self):
         video_3_FilesPath = self.file_path + "/" + self.video_3_file_name
-        return load_data(video_3_FilesPath + ".csv", True, video_3_FilesPath + ".json")
+        return load_data_with_event_matching(video_3_FilesPath + ".csv", True, video_3_FilesPath + ".json")
     
     def getVideo4Data(self):
         video_4_FilesPath = self.file_path + "/" + self.video_4_file_name
-        return load_data(video_4_FilesPath + ".csv", True, video_4_FilesPath + ".json")
+        return load_data_with_event_matching(video_4_FilesPath + ".csv", True, video_4_FilesPath + ".json")
     
     def getVideo5Data(self):
         video_5_FilesPath = self.file_path + "/" + self.video_5_file_name
-        return load_data(video_5_FilesPath + ".csv", True, video_5_FilesPath + ".json")
+        return load_data_with_event_matching(video_5_FilesPath + ".csv", True, video_5_FilesPath + ".json")
 
 
 class Video:

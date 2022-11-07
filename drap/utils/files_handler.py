@@ -22,12 +22,14 @@ import os, json, pickle
 # %%
 def check_or_create_folder(filename):
     """
-    Creates a folder to the indicated path to be able to write files in it
+    Creates a folder to the indicated path to be able to write files in it.
+    returns True if a folder was created. False if it existed beforehand.
     """
     import os
     if not os.path.isdir(os.path.dirname(filename)):
         os.makedirs(os.path.dirname(filename))
-    return
+        return True
+    return False
 
 # %%
 def create_json(dictionary, json_path = "filename.json", pretty=False):
