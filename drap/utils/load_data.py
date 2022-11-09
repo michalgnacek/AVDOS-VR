@@ -1,7 +1,17 @@
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# =============================================================================
+# Created By  : 
+#           Michal Gnacek | gnacek.com
+#           Luis Quintero | luisqtr.com
+# Created Date: 2021/01/08
+# =============================================================================
 """
-@author: user
+Utility functions to deal with files management
 """
+# =============================================================================
+# Imports
+# =============================================================================
 
 import pandas as pd
 import numpy as np
@@ -9,7 +19,14 @@ import json
 import re
 from io import StringIO
 
+from utils import config
+
+# =============================================================================
+# Main
+# =============================================================================
+
 def load_data_with_event_matching(path_to_data, events_file, path_to_event_markers = "", exact_event_matching = True, newLabels = True): 
+
     '''
      """The function reads the data from a specified path and formats it into
      the required structure for further processing.
@@ -146,3 +163,133 @@ def load_data_with_event_matching(path_to_data, events_file, path_to_event_marke
                
     
     return df
+
+
+def get_metadata_value(df, key):
+    """
+    Get metadata from array
+    """
+    try:
+        val = df[ df["metadata"]==key ]["value"]
+        return None if (val.size == 0) else val
+    except:
+        return None
+
+def __normalize_from_metadata(data:pd.DataFrame, metadata:pd.DataFrame):
+    """
+    Applies the normalization values to each of the physiological
+    variables collected from the emteqPro mask.
+
+    `data` and `metadata` are generated from the function `load_single_csv_data()`
+
+    Normalization happens based on guidelines from :
+        > https://support.emteqlabs.com/data/CSV.html
+    """
+
+    # Which variable to look in the metadata, and to which data columns it will be applied.
+    NORMALIZATION_TABLE = {
+            # '#Time/Seconds.referenceOffset' = [], # This is already applied manually in `load_single_csv_data()`
+            '#Emg/Properties.rawToVoltageDivisor': [],
+            '#Emg/Properties.contactToImpedanceDivisor': [],
+            '#Accelerometer/Properties.rawDivisor': [],
+            '#Magnetometer/Properties.rawDivisor': [],
+            '#Gyroscope/Properties.rawDivisor': []
+    }
+
+    for norm_value, cols_to_normalize in NORMALIZATION_TABLE.items():
+        for col in cols_to_normalize:
+            print(f"Applying normalization from {norm_value} to column {col} with value: {norm_value}")
+
+    # get_metadata_value(metadata, '#Time/Seconds.referenceOffset')
+    # get_metadata_value(metadata, '#Emg/Properties.rawToVoltageDivisor')
+    # get_metadata_value(metadata, '#Emg/Properties.contactToImpedanceDivisor')
+    # get_metadata_value(metadata, '#Accelerometer/Properties.rawDivisor')
+    # get_metadata_value(metadata, '#Magnetometer/Properties.rawDivisor')
+    # get_metadata_value(metadata, '#Gyroscope/Properties.rawDivisor')
+
+    # for line in metadata:
+    #     if line.find('Frame#') == -1:
+    #         data=data.replace("{}".format(line),'', 1)
+    #     if line.find('#Time/Seconds.referenceOffset') != -1:
+    #         time_offset = float(line.split(',')[1])
+    #     if line.find('#Emg/Properties.rawToVoltageDivisor') != -1:
+    #         emg_divisor = float(line.split(',')[1])
+    #     if line.find('#Emg/Properties.contactToImpedanceDivisor') != -1:
+    #         impedance_divisor = float(line.split(',')[1])
+    #     if line.find('#Imu/Properties.accelerationDivisor') != -1:
+    #         acceleration_divisor = float(line.split(',')[1])
+    #     if line.find('#Imu/Properties.magnetometerDivisor') != -1:
+    #         magnetometer_divisor = float(line.split(',')[1])
+    #     if line.find('#Imu/Properties.gyroscopeDivisor') != -1:
+    #         gyroscope_divisor = float(line.split(',')[1])
+    #     #New labels for IMU    
+    #     if line.find('#Accelerometer/Properties.rawDivisor') != -1:
+    #         acceleration_divisor = float(line.split(',')[1])
+    #     if line.find('#Magnetometer/Properties.rawDivisor') != -1:
+    #         magnetometer_divisor = float(line.split(',')[1])
+    #     if line.find('#Gyroscope/Properties.rawDivisor') != -1:
+    #         gyroscope_divisor = float(line.split(',')[1])
+
+    # TODO! # 
+    return data
+
+
+def load_single_csv_data(path_to_csv:str, 
+                                columns:list=None, 
+                                filter_wrong_timestamps:bool=True,
+                                normalize_reference_time:bool = True,
+                                filter_duplicates:bool = True,
+                                normalize_from_metadata:bool=True):
+    """
+    Filepath to CSV file to load.
+
+    :param path_to_csv: Full path to CSV file to be loaded
+    :param columns: Subset of columns to extract. You may use `EmgPathMuscles` to generate the list
+    :param filter_wrong_timestamps: Remove the rows that contain timestamps <0 and >last_timestamp_in_file
+    :param normalize_reference_time: Convert the timestamps in file to Unix using metadata "#Time/Seconds.referenceOffset"
+    :param filter_duplicates: Removes the duplicate rows from the pandas DataFrame, exclusing the timestamps in the index.
+
+    :return: Data and metadata
+    :rtype: A tuple with two pandas.DataFrames
+    """
+
+    # Metadata with the character '#'
+    metadata = pd.read_csv( path_to_csv, sep=",", engine="c", on_bad_lines='skip', header=None, names = ["metadata","value","more"])
+    
+    ## Code below does not work. Indexing through strings raises an error in pandas
+    # metadata["metadata"]=metadata["metadata"].apply(lambda x: x[1:]) # Remove the symbol # from the beginning of the line
+    # metadata.set_index("metadata", inplace=True)
+    
+    # All lines that do not start with the character '#', therefore `comment="#"`
+    data = pd.read_csv( path_to_csv, sep=",", comment="#", engine="c", header=0, names=config.DATA_HEADER_CSV)
+
+    # Subselect some columns
+    if columns is not None:
+        data = data[ [config.TIME_COLNAME] + columns ]
+
+    # Filter data with invalid timestamps
+    if(filter_wrong_timestamps):
+        # Some timestamps carry over wrong timestamps due to high-freq data, 
+        # thus remove samples with values greater than time in the last row
+        data = data[ (data[config.TIME_COLNAME] < data[config.TIME_COLNAME].iloc[-1]) ]
+
+    # Time as index in the DF
+    data.set_index(config.TIME_COLNAME, inplace=True)
+
+    # Convert timestamps
+    if (normalize_reference_time):
+        # Extract unix offset from metadata and add it to data
+        _ref_unix_offset = float(get_metadata_value(metadata,"#Time/Seconds.unixOffset"))
+        data.index += _ref_unix_offset # Transform from secs to msec
+        # Convert from J2000 to unix
+
+    # Convert values to corresponding units based on metadata
+    if(normalize_from_metadata):
+        data = __normalize_from_metadata(data, metadata)
+
+    # Most data should contain duplicates if the raw data @2KHz are not chosen
+    if filter_duplicates:
+        data.drop_duplicates(keep="first", inplace=True)
+
+    return data, metadata
+

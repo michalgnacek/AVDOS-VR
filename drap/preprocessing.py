@@ -26,6 +26,7 @@ THIS_PATH = str(os.path.dirname(os.path.abspath(__file__)))
 from copy import deepcopy
 
 import utils.files_handler
+import utils.load_data
 from utils import config
 from utils.enums import EmgVars, EmgMuscles, SessionSegment
 
@@ -187,15 +188,39 @@ class Manager():
         
         # Entry condition
         if force_index_regeneration:
-            print("Forcing index construction: ", self._index_file_path)
+            print("Forcing index construction!!", self._index_file_path)
+            self.__generate_index(_temp_folder_index_files)
         else:
-            if(self.__load_index_file() is not None):
+            if (not self.__load_index_file()):        
+                # Create index from the dataset folder if it does not exist
+                # otherwise it will automatically loaded in 
+                print("There is no index yet! Creating it in ", self._index_file_path)
+                self.__generate_index(_temp_folder_index_files)
+            else:
+                # Index file already exists
                 print("Index already exists: Loading from ", self._index_file_path)
-                return
-            
-            ##### Create index from the dataset folder
-            print("There is no index yet! Creating it in ", self._index_file_path)
-    
+
+        # Load the summary, events, emotions, and segments. Not data because it is too large.
+        self.load_event_files()
+        self.load_emotion_files()
+        self.load_segments_files()
+
+        # Load or generate summary
+        self.summary =  self.__generate_basic_summary_df()
+        # Save summary file
+        filepath_temp = os.path.join(_temp_folder_index_files, self.SUMMARY_DF_FILENAME)
+        utils.files_handler.check_or_create_folder(filepath_temp)
+        self.summary.to_csv(filepath_temp, index=False)
+        return
+
+    def __generate_index(self, index_folder:str):
+        """
+        Analyzes the data's folder and creates a file
+        with the index
+        """
+
+        _temp_folder_index_files = index_folder
+
         ### GENERATING INDEX
         # Dictionary to store files
         files_index = {}
@@ -271,20 +296,8 @@ class Manager():
 
         print(f"Json file with index of the dataset was saved in {self._index_file_path}")
 
-        # Global variable for the index
-        self.index = files_index.copy()
-
-        # Load the summary, events, emotions, and segments. Not data because it is too large.
-        self.load_event_files()
-        self.load_emotion_files()
-        self.load_segments_files()
-        self.summary =  self.__load_summary_df()
-
-        # Save summary file
-        filepath_temp = os.path.join(_temp_folder_index_files, directory.name, self.SUMMARY_DF_FILENAME)
-        utils.files_handler.check_or_create_folder(filepath_temp)
-        self.summary.to_csv(filepath_temp, index=False)
-        return
+        self.index = files_index
+        return True
 
     def __load_index_file(self):
         """
@@ -296,7 +309,7 @@ class Manager():
             self.index = utils.files_handler.load_json(self._index_file_path)
             # Accessing the participants as numeric ids, not as strings
             self.index = { int(k):v for k,v in self.index.items() }
-            return 0
+            return True
         except:
             return None
 
@@ -358,10 +371,12 @@ class Manager():
                 self.emotions[id].drop_duplicates(keep="first", inplace=True)
         return
 
-    def __load_summary_df(self):
+    def __generate_basic_summary_df(self):
         """
         Takes the index, events, emotions, and segments to create a compiled 
         dataframe that summarizes the data.
+        This summary considers the whole file, without synchronizing the data
+        with respect to the timestamps in the [Start,End] of each experimental segment.
         """
         df_sum = None
         for pid,pdata in self.index.items():
@@ -384,9 +399,9 @@ class Manager():
 
                 # Summarize dataframe
                 current_summary = {
-                            # "index_id": pid,
-                            # "participant_id": pdata['participant_id'],
-                            # "protocol": pdata['protocol'],
+                            "index_id": pid,
+                            "participant_id": pdata['participant_id'],
+                            "protocol": pdata['protocol'],
                             "Segment":segtype,
                             "Events_N": event_filtered.shape[0],
                             "Events_duration": event_filtered["Time"].iloc[-1] - event_filtered["Time"].iloc[0],
@@ -401,97 +416,36 @@ class Manager():
                 current_summary = pd.DataFrame.from_dict(current_summary)
 
                 df_sum = current_summary if (df_sum is None) else pd.concat([df_sum, current_summary], ignore_index=True)
-            
-            # Insert participant's data
-            current_summary.insert(0, "protocol", value=pdata['protocol'])
-            current_summary.insert(0, "participant_id", value= pdata['participant_id'])
-            current_summary.insert(0, "index_id", value=pid)
+        # Finished creating all files
         return df_sum
-
-    def __normalize_from_metadata():
-        # TODO! # 
-        pass
-
-    def __load_single_csv_data(self, path_to_csv:str, 
-                                    columns:list=None, 
-                                    filter_wrong_timestamps:bool=True,
-                                    apply_reference_timestamp_J2000:bool = True,
-                                    filter_duplicates:bool = True,
-                                    normalize_from_metadata:bool=True):
-        """
-        Filepath to CSV file to load.
-
-        :param path_to_csv: Full path to CSV file to be loaded
-        :param columns: Subset of columns to extract. You may use `EmgPathMuscles` to generate the list
-        :param filter_wrong_timestamps: Remove the rows that contain timestamps <0 and >last_timestamp_in_file
-        :param apply_reference_timestamp_J2000: Convert the timestamps from Unix to J2000 using metadata "#Time/Seconds.referenceOffset"
-        :param filter_duplicates: Removes the duplicate rows from the pandas DataFrame, exclusing the timestamps in the index.
-
-        :return: Data and metadata
-        :rtype: A tuple with two pandas.DataFrames
-        """
-
-        # Metadata with the character '#'
-        metadata = pd.read_csv( path_to_csv, sep=",", engine="c", on_bad_lines='skip', header=0, names = ["metadata","value"])
-        metadata.set_index("metadata", inplace=True)
-        
-        # All lines that do not start with the character '#', therefore `comment="#"`
-        data = pd.read_csv( path_to_csv, sep=",", comment="#", engine="c", header=0, names=config.DATA_HEADER_CSV)
-
-        # Subselect some columns
-        if columns is not None:
-            data = data[ [config.TIME_COLNAME] + columns ]
-
-        # Filter data with invalid timestamps
-        if(filter_wrong_timestamps):
-            # Some timestamps carry over wrong timestamps due to high-freq data, 
-            # thus remove samples with values greater than time in the last row
-            data = data[ (data[config.TIME_COLNAME] < data[config.TIME_COLNAME].iloc[-1]) ]
-
-        # Time as index in the DF
-        data.set_index(config.TIME_COLNAME, inplace=True)
-
-        # Convert timestamps
-        if (apply_reference_timestamp_J2000):
-            # Extract from the metadata the J2000 reference value
-            _ref_timestamp_J2000 = float(metadata["#Time/Seconds.referenceOffset"].value)
-            data.index += (_ref_timestamp_J2000) # Transform from secs to msec
-
-        # Convert values to corresponding units based on metadata
-        if(normalize_from_metadata):
-            data = self.__normalize_from_metadata(data, metadata)
-
-        # Most data should contain duplicates if the raw data @2KHz are not chosen
-        if filter_duplicates:
-            data.drop_duplicates(keep="first", inplace=True)
-
-        return data, metadata
-
 
     def load_data_from_participant(self, 
                                 participant_idx:int, 
-                                session_part:str, 
+                                session_segment:str, 
                                 columns:list=None, 
-                                use_J2000_timestamps:bool = False
+                                convert_timestamps_to_unix:bool = True,
+                                normalize_data_units = False,
                                 ):
         """
         Loads the recorded data from a specific participant and a given 
         experiment session segment.
         
         :param participant_idx: Index of the participant (generally from 0 to 15)
-        :param session_part: Unique key indicating which session segment to access. See `SessionSegment(Enum)`
+        :param session_segment: Unique key indicating which session segment to access. See `SessionSegment(Enum)`
         :param columns: List of columns to return from the dataset
-        :param use_J2000_timestamps: Convert from Unix to J2000 format (useful to match with Event logs)
+        :param convert_timestamps_to_unix: Convert data to Unix format (useful to match with Event logs)
+        :param normalize_data_units: Apply normalization from metadata into the physio data
         :return: Tuple of two dataframes containing (data, metadata)
         :rtype: Tuple of two pandas DataFrames
         """
-        path_to_requested_file = self.index[participant_idx]["data"][session_part]
+        path_to_requested_file = self.index[participant_idx]["data"][session_segment]
         full_path_to_file = os.path.join(self._folder_data_path, path_to_requested_file)
         print("Loading from: ", full_path_to_file)
 
-        return self.__load_single_csv_data(full_path_to_file, 
+        return utils.load_data.load_single_csv_data(full_path_to_file, 
                                             columns = columns,
-                                            apply_reference_timestamp_J2000 = use_J2000_timestamps)
+                                            normalize_reference_time = convert_timestamps_to_unix,
+                                            normalize_from_metadata=normalize_data_units)
     
 
     def __load_single_event_file_into_pandas(self, 
@@ -515,7 +469,7 @@ class Manager():
         organized_dict["Session"] = [session_name] * len(organized_dict["Timestamp"])
 
         # Create dataframe
-        df = pd.DataFrame(deepcopy(organized_dict.copy()))
+        df = pd.DataFrame( deepcopy(organized_dict.copy()) )
 
         # Convert from J2000 (in miliseconds) to Unix (in seconds)
         if(convert_J2000_to_unix_seconds):
