@@ -29,6 +29,7 @@ import utils.files_handler
 import utils.load_data
 from utils import config
 from utils.enums import EmgVars, EmgMuscles, SessionSegment, AffectSegments
+from analysis.dataframe_functions import resample_dataframe
 
 # Import scientific 
 import numpy as np
@@ -718,7 +719,8 @@ class Manager():
         Returns the emotions from the rest and video stages of a
         specific participant and affective segment 
         (`enums.AffectSegments`, or ["Positive","Neutral","Negative"]).
-
+        :param participant_idx: Index of the participant (generally from 0 to 15)
+        :param affective_segment: Unique key indicating which affective segment to access. See `AffectSegments(Enum)`
         :return: Tuple of two dataframes containing (data_rest, data_video)
         :rtype: Tuple of two pandas DataFrames
         """
@@ -738,6 +740,63 @@ class Manager():
 
         return (emotions_rest, emotions_video)
 
+    def generate_merged_synchronized_dataframe(self,
+                                    participant_idx:int, 
+                                    affective_segment:str,
+                                    colnames_to_process:list=None,
+                                    sampling_frequency_hz=50):
+        """
+        This function takes the data from all participants and returns
+        a compiled dataset that combines the physiological data
+
+        :param participant_idx: Index of the participant (generally from 0 to 15)
+        :param affective_segment: Unique key indicating which affective segment to access. See `AffectSegments(Enum)`
+        :return: Tuple of two dataframes containing (data_rest, data_video)
+        :rtype: Tuple of two pandas DataFrames
+        """
+
+        PREFIX_RESTING_STAGE = "Resting_"
+
+        # Obtain video ids from the segment
+        video_id_end_timestamp = self.calculate_video_id_end_timestamps(participant_idx, affective_segment)
+
+        # Load physio data
+        data_rest, data_video = self.load_data_from_affect_segment(participant_idx, affective_segment, columns=colnames_to_process)
+        # Merge with videoId
+        data_rest_merged = pd.merge_asof(data_rest, video_id_end_timestamp, left_index=True, right_index=True, direction="forward")
+        data_video_merged = pd.merge_asof(data_video, video_id_end_timestamp, left_index=True, right_index=True, direction="forward")
+        
+        # Load affective ratings
+        emotions_rest, emotions_video = self.load_emotions_from_affect_segment(participant_idx, affective_segment)
+        # Merge physio with affective ratings
+        data_rest_merged = pd.merge_asof(data_rest_merged, emotions_rest, left_index=True, right_index=True)
+        data_video_merged = pd.merge_asof(data_video_merged, emotions_video, left_index=True, right_index=True)
+        
+        # Resample the data to FS
+        data_rest_resampled = resample_dataframe(data_rest_merged, sampling_frequency_hz)
+        data_video_resampled = resample_dataframe(data_video_merged, sampling_frequency_hz)
+
+        """ COMBINING DATASET IN A SINGLE ONE """
+        if(self._verbose):
+            print(f"\nAnalyzing participant {participant_idx} segment {affective_segment}")
+            print(f"Actual duration stage REST: {data_rest_resampled.index.max()} \tSHORT?:{data_rest_resampled.index.max()<115}")
+            print(f"Actual duration stage VIDEO: {data_video_resampled.index.max()} \tSHORT?:{data_video_resampled.index.max()<295}")
+            print(f"Total missing vals: REST={data_rest_resampled.isnull().sum().sum()} | VIDEO= {data_video_resampled.isnull().sum().sum()}")
+
+        # Add a column with the original participant ID corresponding to the original dataset
+        folder_id = self.index[participant_idx]['participant_id']
+        data_rest_resampled.insert(0, "OriginalParticipantID", folder_id)
+        data_video_resampled.insert(0, "OriginalParticipantID", folder_id)
+
+        ### Generating multiindex to create a single .csv with all the data
+        COLNAMES_MULTIINDEX = ["Participant","Stage"]
+        data_video_resampled = pd.concat({(participant_idx,affective_segment):data_video_resampled}, names = COLNAMES_MULTIINDEX)
+        data_rest_resampled = pd.concat({(participant_idx, PREFIX_RESTING_STAGE + affective_segment):data_rest_resampled}, names = COLNAMES_MULTIINDEX)
+
+        # Final concatenation of resting and video stages
+        data_compiled = pd.concat([data_rest_resampled.copy(deep=True), data_video_resampled.copy(deep=True)])
+
+        return data_compiled
 
 
 ############################

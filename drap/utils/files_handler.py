@@ -190,4 +190,5 @@ def generate_complete_path(filename:str, main_folder="./temp/", subfolders='', f
         check_or_create_folder(path)
         return path
     else:
+        print("Path was not generated because `save_files=False`")
         return None

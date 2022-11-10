@@ -5,6 +5,7 @@ data/*
 
 # Temporary calculation
 temp/
+notebooks/results/
 
 #VS Code
 .vscode/
