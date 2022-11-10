@@ -28,7 +28,7 @@ from copy import deepcopy
 import utils.files_handler
 import utils.load_data
 from utils import config
-from utils.enums import EmgVars, EmgMuscles, SessionSegment
+from utils.enums import EmgVars, EmgMuscles, SessionSegment, AffectSegments
 
 # Import scientific 
 import numpy as np
@@ -40,6 +40,7 @@ import utils
 # Main
 # =============================================================================       
 
+# Functions to generate colnames for the dataset
 
 def GetColnameEmg(emgvar:EmgVars, muscle:EmgMuscles):
     """
@@ -68,12 +69,28 @@ def GetColnamesFromEmgMuscle(muscle:EmgMuscles):
         colnames.append( GetColnameEmg(emg_dtype, muscle) )
     return colnames
 
-def GetColnamesBasicsNonEmg():
-    """
-    Returns a list of colnames with essential non-EMG data
-    """
-    return config.DATA_HEADSER_NON_EMG_BASICS
+## Shortcut to access DRAP colnames
 
+COLNAMES_EMG_RAW = GetColnamesFromEmgVariableType(EmgVars.Raw)
+COLNAMES_EMG_FILTERED = GetColnamesFromEmgVariableType(EmgVars.Filtered)
+COLNAMES_EMG_AMPLITUDE = GetColnamesFromEmgVariableType(EmgVars.Amplitude)
+COLNAMES_EMG_CONTACT = GetColnamesFromEmgVariableType(EmgVars.Contact)
+COLNAMES_EMG_CONTACT_STATES = GetColnamesFromEmgVariableType(EmgVars.ContactStates)
+
+COLNAMES_FACEPLATE = config.FACEPLATE_COLNAMES
+COLNAMES_HR = config.HR_COLNAME
+COLNAMES_PPG = config.PPG_COLNAMES
+
+COLNAMES_ACCELEROMETER = config.ACC_COLNAMES
+COLNAMES_MAGNETOMETER = config.MAG_COLNAMES
+COLNAMES_GYROSCOPE = config.GYR_COLNAMES
+
+COLNAMES_RECOMMENDED = COLNAMES_EMG_AMPLITUDE + config.DATA_NON_EMG_RECOMMENDED
+
+
+############################
+#### MAIN CLASS TO GENERATE INDEX
+############################
 
 class Manager():  
 
@@ -299,6 +316,139 @@ class Manager():
         self.index = files_index
         return True
 
+    def __load_single_event_file_into_pandas(self, 
+                        event_filepath, 
+                        session_name,
+                        convert_J2000_to_unix_seconds:bool = True):
+        """
+        Loads a file with events into a structured dictionary
+        """
+        dict_from_json = utils.files_handler.load_json(event_filepath)
+        
+        # Transform to simpler dict compatible with Pandas
+        organized_dict = deepcopy(self.PROCESSED_EVENTS_DICT)
+
+        # Convert each key:value into an array with column names
+        for event_info in dict_from_json:
+            for k,v in event_info.items():
+                organized_dict[k].append(v)
+
+        # Repeat the session name as much as needed. It facilitates filtering
+        organized_dict["Session"] = [session_name] * len(organized_dict["Timestamp"])
+
+        # Create dataframe
+        df = pd.DataFrame( deepcopy(organized_dict.copy()) )
+
+        # Convert from J2000 (in miliseconds) to Unix (in seconds)
+        # All .json files containing events are originally in J2000 format
+        if(convert_J2000_to_unix_seconds):
+            df["Timestamp"] = (df["Timestamp"] + config.CONVERSION_TIMESTAMP_FROM_J2000_TO_UNIX)/1e3
+        return df
+
+    def __separate_exp_stages_and_emotion_ratings(self, compiled_events_dataframe:pd.DataFrame):
+        """
+        Takes the dataframe that compiles all the event files, and
+        produces two dataframes: One contains the events related to the experiments
+        and the other contains time-series values with valence and arousal.
+        """
+        df = compiled_events_dataframe
+
+        # Criteria to know whether it's experimental or emotional data
+        QUERY_FILTER = (df["Event"].str.startswith("Valence"))
+
+        ########### All experimental stages in a single dataset
+        all_non_affect_events = df[ ~QUERY_FILTER ]
+
+        all_non_affect_events.set_index("Timestamp", inplace=True)
+        all_non_affect_events.index.rename(config.TIME_COLNAME, inplace=True)
+        
+        timestamped_start_end_segments = self.__process_long_events_to_extract_experimental_segments(all_non_affect_events)
+
+        #################################
+        ########### Subjective emotions are Valence/Arousal ratings
+        #################################
+        subjective_affect_data = df[ QUERY_FILTER ]
+
+        # Change index
+        subjective_affect_data.set_index("Timestamp", inplace=True)
+        subjective_affect_data.index.rename(config.TIME_COLNAME, inplace=True)
+
+        # Extract the emotional data from the string. First splitting by "," and then by ":" every two values
+        emotions = subjective_affect_data["Event"].str.split(",").apply(lambda x: [v.split(":")[1] for v in x])
+        # The resulting frame is a Series of Lists. Transform into DataFrame
+        emotions = pd.DataFrame(emotions.tolist(), 
+                                index=subjective_affect_data.index, 
+                                columns=["Valence","Arousal","RawX","RawY"])
+
+        # Join with original timestamp and session segment.
+        subjective_affect_data = subjective_affect_data.join(emotions)
+        subjective_affect_data.drop(["Event"], axis=1, inplace=True)
+
+        return all_non_affect_events, timestamped_start_end_segments, subjective_affect_data
+
+    def __process_long_events_to_extract_experimental_segments(self, experimental_events):
+        """
+        Extract the starting time and end time of each of the experimental stages. 
+        To be used to segment the TS between stages
+        """
+
+        VIDEO_ID_FOR_RESTING_VIDEO = -1
+        KEYWORD_SEGMENT_BEGINNING = "Start"
+        KEYWORD_SEGMENT_END = "End"
+
+        # All experimental stages start with an Event saying "Playing ___"
+        events_filter = experimental_events[experimental_events.Event.str.contains("Playing")]
+        
+        # Find the video file corresponding to each emotion. `video_2`, `video_3`, or `video_4`
+        video_label_negative = events_filter[ events_filter.Event.str.contains("Category name: Negative") ].Session.values[0]
+        video_label_positive = events_filter[ events_filter.Event.str.contains("Category name: Positive") ].Session.values[0]
+        video_label_neutral = events_filter[ events_filter.Event.str.contains("Category name: Neutral") ].Session.values[0]
+
+        # Dict to map video filename to emotion category
+        map_session_to_emotion = {
+                                    "fast_movement":"fast_movement",
+                                    "slow_movement":"slow_movement",
+                                    # Randomized order
+                                    video_label_negative: str(AffectSegments.VideosNegative),
+                                    video_label_neutral: str(AffectSegments.VideosNeutral),
+                                    video_label_positive: str(AffectSegments.VideosPositive),
+                                    # Test videos
+                                    "video_1":"video_1",
+                                    "video_5":"video_5",
+                                }
+
+        #### Find events related to the beginning of each video or rest stage.
+        tstamps_start_videos = events_filter[events_filter.Event.str.startswith("Playing video number:")].copy()
+        tstamps_start_videos["Segment"] = tstamps_start_videos["Session"].map(map_session_to_emotion) 
+        tstamps_start_videos["VideoId"] = tstamps_start_videos.Event.str.split(":").apply( lambda x: int(x[1]))
+        tstamps_start_videos["Trigger"] = KEYWORD_SEGMENT_BEGINNING
+
+        tstamps_start_rest = events_filter [events_filter.Event.str.contains("Playing rest video")].copy()
+        tstamps_start_rest["Segment"] = tstamps_start_rest["Session"].map(map_session_to_emotion)
+        tstamps_start_rest["VideoId"] = VIDEO_ID_FOR_RESTING_VIDEO
+        tstamps_start_rest["Trigger"] = KEYWORD_SEGMENT_BEGINNING
+
+        ### Find events related to the end of each video, or rest stage
+        events_filter_end = experimental_events[ experimental_events.Event.str.contains("Finished playing") ]
+
+        tstamps_end_videos = events_filter_end [events_filter_end.Event.str.startswith("Finished playing video number:")].copy()
+        tstamps_end_videos["Segment"] = tstamps_end_videos["Session"].map(map_session_to_emotion)
+        tstamps_end_videos["VideoId"] = tstamps_end_videos.Event.str.split(":").apply( lambda x: int(x[1]))
+        tstamps_end_videos["Trigger"] = KEYWORD_SEGMENT_END
+
+        tstamps_end_rest = events_filter_end [events_filter_end.Event.str.startswith("Finished playing rest video")].copy()
+        tstamps_end_rest["Segment"] = tstamps_end_rest["Session"].map(map_session_to_emotion)
+        tstamps_end_rest["VideoId"] = VIDEO_ID_FOR_RESTING_VIDEO
+        tstamps_end_rest["Trigger"] = KEYWORD_SEGMENT_END
+
+        # Find the video Id playing per each group
+        tstamps_total_segments = pd.concat([tstamps_start_videos,tstamps_start_rest,tstamps_end_videos,tstamps_end_rest])
+        tstamps_total_segments.drop("Event", axis=1, inplace=True)
+        tstamps_total_segments.sort_index(inplace=True)
+        # tstamps_total_segments.reset_index(inplace=True) ## Do not uncomment, loading scripts always look for "Time" (config.DATA_HEADER_CSV) as index
+
+        return tstamps_total_segments
+
     def __load_index_file(self):
         """
         Loads the dictionary with the index file into memory.
@@ -447,140 +597,147 @@ class Manager():
                                             normalize_reference_time = convert_timestamps_to_unix,
                                             normalize_from_metadata=normalize_data_units)
     
+    def obtain_order_experimental_segments(self, participant_idx:int):
+        """
+        Returns an array with the order of the experimental stage
+        for the `participant_idx`
+        """
+        # Event sequence
+        EVENT_TEXT_SEQUENCE = "Category sequence:"
+        keys_containing_sync_event = self.events[participant_idx].Event.str.startswith(EVENT_TEXT_SEQUENCE)
+        cat_sequence = self.events[participant_idx][ keys_containing_sync_event ].iloc[0] # Choose first event
+        video_seq = cat_sequence.Event.split(":")[1].split(",")
+        video_seq = [x.strip() for x in video_seq]
+        return video_seq
 
-    def __load_single_event_file_into_pandas(self, 
-                        event_filepath, 
-                        session_name,
-                        convert_J2000_to_unix_seconds:bool = True):
+    def calculate_info_from_segment(self, participant_idx:int, affective_segment:str):
         """
-        Loads a file with events into a structured dictionary
-        """
-        dict_from_json = utils.files_handler.load_json(event_filepath)
+        Processes a dataframe of segments timestamps and returns a tuple with:
+            - rest_tstamp_start: Timestamp when the resting video started
+            - rest_tstamp_end: Timestamp when the resting video ended
+            - video_tstamp_start: Timestamp when the corresponding video stage started
+            - video_tstamp_end: Timestamp when the corresponding video stage ended
+            - video_filename: Filename of the file corresponding to the affective stage
         
-        # Transform to simpler dict compatible with Pandas
-        organized_dict = deepcopy(self.PROCESSED_EVENTS_DICT)
-
-        # Convert each key:value into an array with column names
-        for event_info in dict_from_json:
-            for k,v in event_info.items():
-                organized_dict[k].append(v)
-
-        # Repeat the session name as much as needed. It facilitates filtering
-        organized_dict["Session"] = [session_name] * len(organized_dict["Timestamp"])
-
-        # Create dataframe
-        df = pd.DataFrame( deepcopy(organized_dict.copy()) )
-
-        # Convert from J2000 (in miliseconds) to Unix (in seconds)
-        if(convert_J2000_to_unix_seconds):
-            df["Timestamp"] = ( df["Timestamp"] + config.CONVERSION_TIMESTAMP_FROM_J2000_TO_UNIX ) / 1e3
-
-        return df
-
-    def __separate_exp_stages_and_emotion_ratings(self, compiled_events_dataframe:pd.DataFrame):
+        :param participant_idx: Index of the participant (generally from 0 to 15)
+        :param affective_segment: Unique key indicating which affective segment to access. See `AffectSegments(Enum)`
+        :return: Tuple with five objects as described above.
+        :rtype: Tuple
         """
-        Takes the dataframe that compiles all the event files, and
-        produces two dataframes: One contains the events related to the experiments
-        and the other contains time-series values with valence and arousal.
-        """
-        df = compiled_events_dataframe
 
-        # Criteria to know whether it's experimental or emotional data
-        QUERY_FILTER = (df["Event"].str.startswith("Valence"))
+        df_segments = self.segments[participant_idx]
 
-        ########### All experimental stages in a single dataset
-        all_non_affect_events = df[ ~QUERY_FILTER ]
+        # Filter the segment corresponding to the intended video
+        df_segments = df_segments[ df_segments["Segment"] == affective_segment]
 
-        all_non_affect_events.set_index("Timestamp", inplace=True)
-        all_non_affect_events.index.rename(config.TIME_COLNAME, inplace=True)
+        # Find the beginning and end of the RESTING (VideoId == -1)
+        rest_start = df_segments[ (df_segments["Trigger"]=="Start") & (df_segments["VideoId"] == -1)].index.min()
+        rest_end = df_segments[ (df_segments["Trigger"]=="End") & (df_segments["VideoId"] == -1)].index.max()
+
+        # The segment watching the VIDEO (VideoId != -1)
+        video_start = df_segments[ (df_segments["Trigger"]=="Start") & (df_segments["VideoId"] != -1)].index.min()
+        video_end = df_segments[ (df_segments["Trigger"]=="End") & (df_segments["VideoId"] != -1)].index.max()
+
+        # Which file should be loaded to access the required data
+        video_filename = df_segments["Session"].iloc[0]
+
+        # Correct the few situations when the video starts before resting ends for few miliseconds
+        if rest_end > video_start:
+            video_start = rest_end
         
-        timestamped_start_end_segments = self.__process_long_events_to_extract_experimental_segments(all_non_affect_events)
+        return (rest_start, rest_end, video_start, video_end, video_filename)
 
-        #################################
-        ########### Subjective emotions are Valence/Arousal ratings
-        #################################
-        subjective_affect_data = df[ QUERY_FILTER ]
-
-        # Change index
-        subjective_affect_data.set_index("Timestamp", inplace=True)
-        subjective_affect_data.index.rename(config.TIME_COLNAME, inplace=True)
-
-        # Extract the emotional data from the string. First splitting by "," and then by ":" every two values
-        emotions = subjective_affect_data["Event"].str.split(",").apply(lambda x: [v.split(":")[1] for v in x])
-        # The resulting frame is a Series of Lists. Transform into DataFrame
-        emotions = pd.DataFrame(emotions.tolist(), 
-                                index=subjective_affect_data.index, 
-                                columns=["Valence","Arousal","RawX","RawY"])
-
-        # Join with original timestamp and session segment.
-        subjective_affect_data = subjective_affect_data.join(emotions)
-        subjective_affect_data.drop(["Event"], axis=1, inplace=True)
-
-        return all_non_affect_events, timestamped_start_end_segments, subjective_affect_data
-
-
-    def __process_long_events_to_extract_experimental_segments(self, experimental_events):
+    def calculate_video_id_end_timestamps(self, participant_idx:int, affective_segment:str):
         """
-        Extract the starting time and end time of each of the experimental stages. 
-        To be used to segment the TS between stages
+        Returns a dataframe with the timestamp where each VideoID of the
+        specific `affective_segment` **finish**.
+        :param participant_idx: Index of the participant (generally from 0 to 15)
+        :param affective_segment: Unique key indicating which affective segment to access. See `AffectSegments(Enum)`
+        :return: Array denoting where each videoId finishes
+        :rtype: pandas DataFrame
         """
+        # EVENT_TEXT_SEQUENCE = "Finished playing video number:" # It will return when the event finished!
+        # keys_containing_sync_event = df_events.Event.str.startswith(EVENT_TEXT_SEQUENCE)
+        # videos_seq = df_events[ keys_containing_sync_event ] # Choose all video numbers
+        # videos_ending = videos_seq.Event.str.split(":")
+        # video_id_end_timestamp = videos_ending.apply((lambda x: int(x[1])))
+        # video_id_end_timestamp = pd.DataFrame({"VideoID":video_id_end_timestamp})
 
-        VIDEO_ID_FOR_RESTING_VIDEO = -1
-        KEYWORD_SEGMENT_BEGINNING = "Start"
-        KEYWORD_SEGMENT_END = "End"
+        df_segments = self.segments[participant_idx]
 
-        # All experimental stages start with an Event saying "Playing ___"
-        events_filter = experimental_events[experimental_events.Event.str.contains("Playing")]
+        # Filter the segment corresponding to the intended video
+        df_segments = df_segments[ df_segments["Segment"] == affective_segment]
+
+        # Find the end of each video stage
+        video_id_end_timestamp = df_segments[ (df_segments["Trigger"]=="End") ]
+        video_id_end_timestamp = video_id_end_timestamp[ ["VideoId"] ]
         
-        # Find the video file corresponding to each emotion. `video_2`, `video_3`, or `video_4`
-        video_label_negative = events_filter[ events_filter.Event.str.contains("Category name: Negative") ].Session.values[0]
-        video_label_positive = events_filter[ events_filter.Event.str.contains("Category name: Positive") ].Session.values[0]
-        video_label_neutral = events_filter[ events_filter.Event.str.contains("Category name: Neutral") ].Session.values[0]
+        return video_id_end_timestamp
 
-        # Dict to map video filename to emotion category
-        map_session_to_emotion = {
-                                    "fast_movement":"fast_movement",
-                                    "slow_movement":"slow_movement",
-                                    # Randomized order
-                                    video_label_negative: "VideoNegative",
-                                    video_label_neutral: "VideoNeutral",
-                                    video_label_positive: "VideoPositive",
-                                    # Test videos
-                                    "video_1":"video_1",
-                                    "video_5":"video_5",
-                                }
+    def load_data_from_affect_segment(self,
+                                participant_idx:int, 
+                                affective_segment:str, 
+                                columns:list=None, 
+                                **kwargs
+                                ):
+        """
+        Returns the data from the rest and video stages of a
+        specific participant and affective segment 
+        (`enums.AffectSegments`, or ["Positive","Neutral","Negative"]).
+        By default, the data is loaded applying the normalization of the data 
+        according to the units and accessing all the columns (columns=None).
+        
+        :param participant_idx: Index of the participant (generally from 0 to 15)
+        :param affective_segment: Unique key indicating which affective segment to access. See `AffectSegments(Enum)`
+        :param columns: List of columns to return from the dataset
+        :param convert_timestamps_to_unix: Convert data to match timestamps in event logs)
+        :param normalize_data_units: Apply normalization from metadata into the physio data
+        :return: Tuple of two dataframes containing (data_rest, data_video)
+        :rtype: Tuple of two pandas DataFrames
+        """
 
-        #### Find events related to the beginning of each video or rest stage.
-        tstamps_start_videos = events_filter[events_filter.Event.str.startswith("Playing video number:")].copy()
-        tstamps_start_videos["Segment"] = tstamps_start_videos["Session"].map(map_session_to_emotion) 
-        tstamps_start_videos["VideoId"] = tstamps_start_videos.Event.str.split(":").apply( lambda x: int(x[1]))
-        tstamps_start_videos["Trigger"] = KEYWORD_SEGMENT_BEGINNING
+        r_t0, r_t1, v_t0, v_t1, video_filename = self.calculate_info_from_segment(participant_idx, affective_segment)
 
-        tstamps_start_rest = events_filter [events_filter.Event.str.contains("Playing rest video")].copy()
-        tstamps_start_rest["Segment"] = tstamps_start_rest["Session"].map(map_session_to_emotion)
-        tstamps_start_rest["VideoId"] = VIDEO_ID_FOR_RESTING_VIDEO
-        tstamps_start_rest["Trigger"] = KEYWORD_SEGMENT_BEGINNING
+        # Load video corresponding to desired Experimental stage
+        data, metadata = self.load_data_from_participant(participant_idx = participant_idx, 
+                                                                session_segment = video_filename,
+                                                                normalize_data_units = True,
+                                                                columns = columns, **kwargs)
 
-        ### Find events related to the end of each video, or rest stage
-        events_filter_end = experimental_events[ experimental_events.Event.str.contains("Finished playing") ]
+        # Filter data between stages
+        data_rest = data[ (data.index >= r_t0) & (data.index < r_t1) ]
+        data_video = data[ (data.index >= v_t0) & (data.index < v_t1) ]
 
-        tstamps_end_videos = events_filter_end [events_filter_end.Event.str.startswith("Finished playing video number:")].copy()
-        tstamps_end_videos["Segment"] = tstamps_end_videos["Session"].map(map_session_to_emotion)
-        tstamps_end_videos["VideoId"] = tstamps_end_videos.Event.str.split(":").apply( lambda x: int(x[1]))
-        tstamps_end_videos["Trigger"] = KEYWORD_SEGMENT_END
+        return (data_rest, data_video)
+    
+    def load_emotions_from_affect_segment(self,
+                                participant_idx:int, 
+                                affective_segment:str
+                                ):
+        """
+        Returns the emotions from the rest and video stages of a
+        specific participant and affective segment 
+        (`enums.AffectSegments`, or ["Positive","Neutral","Negative"]).
 
-        tstamps_end_rest = events_filter_end [events_filter_end.Event.str.startswith("Finished playing rest video")].copy()
-        tstamps_end_rest["Segment"] = tstamps_end_rest["Session"].map(map_session_to_emotion)
-        tstamps_end_rest["VideoId"] = VIDEO_ID_FOR_RESTING_VIDEO
-        tstamps_end_rest["Trigger"] = KEYWORD_SEGMENT_END
+        :return: Tuple of two dataframes containing (data_rest, data_video)
+        :rtype: Tuple of two pandas DataFrames
+        """
 
-        # Find the video Id playing per each group
-        tstamps_total_segments = pd.concat([tstamps_start_videos,tstamps_start_rest,tstamps_end_videos,tstamps_end_rest])
-        tstamps_total_segments.drop("Event", axis=1, inplace=True)
-        tstamps_total_segments.sort_index(inplace=True)
-        # tstamps_total_segments.reset_index(inplace=True) ## Do not uncomment, loading scripts always look for "Time" (config.DATA_HEADER_CSV) as index
+        r_t0, r_t1, v_t0, v_t1, video_filename = self.calculate_info_from_segment(participant_idx, affective_segment)
 
-        return tstamps_total_segments
+        # Filter emotions between the ranges
+        Q = (self.emotions[participant_idx].index >= r_t0) & \
+                (self.emotions[participant_idx].index < r_t1 ) & \
+                (self.emotions[participant_idx].Session == video_filename)
+        emotions_rest = self.emotions[participant_idx][ Q ].drop("Session", axis=1)
+
+        Q = (self.emotions[participant_idx].index >= v_t0) & \
+                (self.emotions[participant_idx].index < v_t1 ) & \
+                (self.emotions[participant_idx].Session == video_filename)
+        emotions_video = self.emotions[participant_idx][ Q ].drop("Session", axis=1)
+
+        return (emotions_rest, emotions_video)
+
 
 
 ############################
@@ -589,27 +746,29 @@ class Manager():
 
 import sys, argparse
 
-def help():
-    m = f"""
-        Experiment execution with dataset ''
-        Parameters:
-            
+_FILE_DESCRIPTION = f"""
+        This file generates an index for the dataset DRAP, to facilitate its analysis.
+        The index is stored in the folder "temp/drap_index/"
+
+        The file is easier used in a notebook. See example in `notebook/1_preprocess...ipynb`
         """
-    # print(m)
-    return m
 
 def main(args):
-    input_folder_path = args.datasetroot 
-    print(f"Analyzing folder {input_folder_path}")
+    if(args.dataset):
+        print(" >>>> TESTING MANUALLY")
+        Manager(os.path.join(THIS_PATH, args.dataset),
+                verbose=args.verbose)
+        print(f"Generating index for dataset in folder: {args.dataset}")
     return
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-p","--datasetroot", type=str, required=True, help=f"Path to the dataset EMTEQ")
+    parser = argparse.ArgumentParser(prog="DRAP dataset",
+                                        description=_FILE_DESCRIPTION,
+                                        epilog="See parameters running `python drap.preprocessing.py --help`")
 
-    # args = parser.parse_args()
-    # main(args)
+    parser.add_argument("--dataset", type=str, required=True, help=f"Root path to the dataset DRAP")
+    parser.add_argument("-v", "--verbose", action='store_true', help=f"Show verbose output")
 
-    print(" >>>> TESTING MANUALLY")
-    data_loader_etl2 = Manager(os.path.join(THIS_PATH,"../data/"))
+    args = parser.parse_args()
+    main(args)
 

@@ -70,12 +70,19 @@ class SessionSegment(Enum):
     """
     Enum to access the dictionary with the data per video
     """
-    FastMovement = "fast_movement"
-    SlowMovement = "slow_movement"
+    # FastMovement = "fast_movement" # Deleted from public dataset
+    # SlowMovement = "slow_movement" # Deleted from public dataset
     video1 = "video_1"
     video2 = "video_2"
     video3 = "video_3"
     video4 = "video_4"
     video5 = "video_5"
+    def __str__(self):
+        return super().value.__str__()
+
+class AffectSegments(Enum):
+    VideosPositive = "Positive"
+    VideosNegative = "Negative"
+    VideosNeutral = "Neutral"
     def __str__(self):
         return super().value.__str__()

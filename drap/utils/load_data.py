@@ -165,7 +165,7 @@ def load_data_with_event_matching(path_to_data, events_file, path_to_event_marke
     return df
 
 
-def get_metadata_value(df, key):
+def __get_metadata_value(df, key):
     """
     Get metadata from array
     """
@@ -175,7 +175,7 @@ def get_metadata_value(df, key):
     except:
         return None
 
-def __normalize_from_metadata(data:pd.DataFrame, metadata:pd.DataFrame):
+def apply_normalization_from_metadata(data:pd.DataFrame, metadata:pd.DataFrame, verbose:bool = False):
     """
     Applies the normalization values to each of the physiological
     variables collected from the emteqPro mask.
@@ -188,49 +188,22 @@ def __normalize_from_metadata(data:pd.DataFrame, metadata:pd.DataFrame):
 
     # Which variable to look in the metadata, and to which data columns it will be applied.
     NORMALIZATION_TABLE = {
-            # '#Time/Seconds.referenceOffset' = [], # This is already applied manually in `load_single_csv_data()`
-            '#Emg/Properties.rawToVoltageDivisor': [],
-            '#Emg/Properties.contactToImpedanceDivisor': [],
-            '#Accelerometer/Properties.rawDivisor': [],
-            '#Magnetometer/Properties.rawDivisor': [],
-            '#Gyroscope/Properties.rawDivisor': []
+            ### '#Time/Seconds.referenceOffset' = [], # This is always normalized manually to Unix in `load_single_csv_data()`
+            '#Emg/Properties.rawToVoltageDivisor': config.EMG_SIGNAL_COLNAMES,
+            '#Emg/Properties.contactToImpedanceDivisor': config.EMG_CONTACT_COLNAMES,
+            '#Accelerometer/Properties.rawDivisor': config.ACC_COLNAMES,
+            '#Magnetometer/Properties.rawDivisor': config.MAG_COLNAMES,
+            '#Gyroscope/Properties.rawDivisor': config.GYR_COLNAMES
     }
 
-    for norm_value, cols_to_normalize in NORMALIZATION_TABLE.items():
+    for norm_id, cols_to_normalize in NORMALIZATION_TABLE.items():
+        norm_value = float( __get_metadata_value(metadata, norm_id) )
+        if (verbose): print(f"\t> Normalizing ({norm_id}={norm_value}) in columns: {cols_to_normalize}: ")
         for col in cols_to_normalize:
-            print(f"Applying normalization from {norm_value} to column {col} with value: {norm_value}")
-
-    # get_metadata_value(metadata, '#Time/Seconds.referenceOffset')
-    # get_metadata_value(metadata, '#Emg/Properties.rawToVoltageDivisor')
-    # get_metadata_value(metadata, '#Emg/Properties.contactToImpedanceDivisor')
-    # get_metadata_value(metadata, '#Accelerometer/Properties.rawDivisor')
-    # get_metadata_value(metadata, '#Magnetometer/Properties.rawDivisor')
-    # get_metadata_value(metadata, '#Gyroscope/Properties.rawDivisor')
-
-    # for line in metadata:
-    #     if line.find('Frame#') == -1:
-    #         data=data.replace("{}".format(line),'', 1)
-    #     if line.find('#Time/Seconds.referenceOffset') != -1:
-    #         time_offset = float(line.split(',')[1])
-    #     if line.find('#Emg/Properties.rawToVoltageDivisor') != -1:
-    #         emg_divisor = float(line.split(',')[1])
-    #     if line.find('#Emg/Properties.contactToImpedanceDivisor') != -1:
-    #         impedance_divisor = float(line.split(',')[1])
-    #     if line.find('#Imu/Properties.accelerationDivisor') != -1:
-    #         acceleration_divisor = float(line.split(',')[1])
-    #     if line.find('#Imu/Properties.magnetometerDivisor') != -1:
-    #         magnetometer_divisor = float(line.split(',')[1])
-    #     if line.find('#Imu/Properties.gyroscopeDivisor') != -1:
-    #         gyroscope_divisor = float(line.split(',')[1])
-    #     #New labels for IMU    
-    #     if line.find('#Accelerometer/Properties.rawDivisor') != -1:
-    #         acceleration_divisor = float(line.split(',')[1])
-    #     if line.find('#Magnetometer/Properties.rawDivisor') != -1:
-    #         magnetometer_divisor = float(line.split(',')[1])
-    #     if line.find('#Gyroscope/Properties.rawDivisor') != -1:
-    #         gyroscope_divisor = float(line.split(',')[1])
-
-    # TODO! # 
+            # Sometimes the dataframe does not include all variables
+            # from the normalization table.
+            if(col in data.columns):
+                data[col] = data[col] / norm_value
     return data
 
 
@@ -246,7 +219,7 @@ def load_single_csv_data(path_to_csv:str,
     :param path_to_csv: Full path to CSV file to be loaded
     :param columns: Subset of columns to extract. You may use `EmgPathMuscles` to generate the list
     :param filter_wrong_timestamps: Remove the rows that contain timestamps <0 and >last_timestamp_in_file
-    :param normalize_reference_time: Convert the timestamps in file to Unix using metadata "#Time/Seconds.referenceOffset"
+    :param normalize_reference_time: Convert the timestamps in file to Unix using metadata "#Time/Seconds.unixOffset"
     :param filter_duplicates: Removes the duplicate rows from the pandas DataFrame, exclusing the timestamps in the index.
 
     :return: Data and metadata
@@ -254,17 +227,31 @@ def load_single_csv_data(path_to_csv:str,
     """
 
     # Metadata with the character '#'
-    metadata = pd.read_csv( path_to_csv, sep=",", engine="c", on_bad_lines='skip', header=None, names = ["metadata","value","more"])
+    metadata = None
+    try:
+        metadata = pd.read_csv( path_to_csv, sep=",", engine="c", on_bad_lines='skip', header=None, names = ["metadata","value","more"])
+        metadata = metadata[ metadata["metadata"].str.startswith("#") ] # Keep rows that start with '#'
+    except:
+        # Hack needed because some files (e.g., `participant_268/video_2.csv`) have CSV data different than the rest and metadata was not loaded.
+        metadata = pd.read_csv( path_to_csv, sep=",", engine="c", on_bad_lines='skip', header=None)#, names = ["metadata","value","more"])
+        metadata = metadata[ metadata[ metadata.columns[0] ].str.startswith("#").replace(np.nan, False) ] # Keep rows that start with '#'
+        metadata.insert(0, "metadata", metadata[metadata.columns[0]])
+        metadata.insert(1, "value", metadata[metadata.columns[2]])
     
     ## Code below does not work. Indexing through strings raises an error in pandas
     # metadata["metadata"]=metadata["metadata"].apply(lambda x: x[1:]) # Remove the symbol # from the beginning of the line
-    # metadata.set_index("metadata", inplace=True)
+    # metadata.set_index("metadata", inplace=True) # Errors having string as index (To be checked!)
     
     # All lines that do not start with the character '#', therefore `comment="#"`
     data = pd.read_csv( path_to_csv, sep=",", comment="#", engine="c", header=0, names=config.DATA_HEADER_CSV)
 
+    # Convert values to corresponding units based on metadata
+    if(normalize_from_metadata):
+        data = apply_normalization_from_metadata(data, metadata)
+
     # Subselect some columns
     if columns is not None:
+        columns = list(set(columns)) # Avoid duplicate colnames
         data = data[ [config.TIME_COLNAME] + columns ]
 
     # Filter data with invalid timestamps
@@ -278,16 +265,14 @@ def load_single_csv_data(path_to_csv:str,
 
     # Convert timestamps
     if (normalize_reference_time):
-        # Extract unix offset from metadata and add it to data
-        _ref_unix_offset = float(get_metadata_value(metadata,"#Time/Seconds.unixOffset"))
-        data.index += _ref_unix_offset # Transform from secs to msec
+        # # Extract unix offset from metadata and add it to data
+        _ref_offset = float(__get_metadata_value(metadata,"#Time/Seconds.unixOffset"))
+        data.index += _ref_offset # Transform from secs to msec
         # Convert from J2000 to unix
+        # _ref_offset = float(__get_metadata_value(metadata,"#Time/Seconds.referenceOffset"))
+        # data.index += _ref_offset # Transform from secs to msec
 
-    # Convert values to corresponding units based on metadata
-    if(normalize_from_metadata):
-        data = __normalize_from_metadata(data, metadata)
-
-    # Most data should contain duplicates if the raw data @2KHz are not chosen
+    # Most data contains duplicates because the raw data is not always @2KHz
     if filter_duplicates:
         data.drop_duplicates(keep="first", inplace=True)
 
