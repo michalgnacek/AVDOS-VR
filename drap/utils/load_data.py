@@ -19,7 +19,7 @@ import json
 import re
 from io import StringIO
 
-from utils import config
+from . import config
 
 # =============================================================================
 # Main

@@ -88,6 +88,7 @@ COLNAMES_GYROSCOPE = config.GYR_COLNAMES
 
 COLNAMES_RECOMMENDED = COLNAMES_EMG_AMPLITUDE + config.DATA_NON_EMG_RECOMMENDED
 
+COLNAMES_AFFECT = config.EMOTION_RATINGS_COLNAMES
 
 ############################
 #### MAIN CLASS TO GENERATE INDEX
@@ -379,7 +380,7 @@ class Manager():
         # The resulting frame is a Series of Lists. Transform into DataFrame
         emotions = pd.DataFrame(emotions.tolist(), 
                                 index=subjective_affect_data.index, 
-                                columns=["Valence","Arousal","RawX","RawY"])
+                                columns=config.EMOTION_RATINGS_COLNAMES)
 
         # Join with original timestamp and session segment.
         subjective_affect_data = subjective_affect_data.join(emotions)
@@ -554,12 +555,12 @@ class Manager():
                             "participant_id": pdata['participant_id'],
                             "protocol": pdata['protocol'],
                             "Segment":segtype,
-                            "Events_N": event_filtered.shape[0],
-                            "Events_duration": event_filtered["Time"].iloc[-1] - event_filtered["Time"].iloc[0],
-                            "Emotions_N": emotions_filtered.shape[0],
-                            "Emotions_duration": (emotions_filtered["Time"].iloc[-1] - emotions_filtered["Time"].iloc[0]) if emotions_filtered.shape[0]>0 else np.nan,
-                            "Emotions_Valence_avg": emotions_filtered["Valence"].mean(),
-                            "Emotions_Arousal_avg": emotions_filtered["Arousal"].mean()
+                            "NonAffectiveEvents_N": event_filtered.shape[0],
+                            "NonAffectiveEvents_duration": event_filtered["Time"].iloc[-1] - event_filtered["Time"].iloc[0],
+                            "AffectiveRatings_N": emotions_filtered.shape[0],
+                            "AffectiveRatings_duration": (emotions_filtered["Time"].iloc[-1] - emotions_filtered["Time"].iloc[0]) if emotions_filtered.shape[0]>0 else np.nan,
+                            "AffectiveRatings_Valence_avg": emotions_filtered["Valence"].mean(),
+                            "AffectiveRatings_Arousal_avg": emotions_filtered["Arousal"].mean()
                         }
 
                 # Convert from values to list, to adapt to DataFrame

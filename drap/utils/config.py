@@ -63,6 +63,7 @@ DATA_NON_EMG_RECOMMENDED = [
                         + GYR_COLNAMES \
                         # + ["Pressure/Raw"]
 
+EMOTION_RATINGS_COLNAMES = ["Valence","Arousal","RawX","RawY"]
 
 # File extensions to look for when loading data
 DATA_FILE_EXTENSION = ".csv"

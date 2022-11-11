@@ -15,14 +15,15 @@ from .utils import event_messages
 
 #%% Set variables
 
-expected_number_of_all_files = 14
+expected_number_of_all_files = 10 # 14 - Moved from 14 to 10 because slow_movement and fast_movement files were deleted.
 expected_number_of_event_files = expected_number_of_all_files/2
 minimum_expected_signal_quality = 8
 
 # Setting this to true will print more messages
 is_debug = False
 create_quality_csv_output_file = True
-df = pd.DataFrame(columns = ["participant_number", "slow_movement_signal_quality", "fast_movement_signal_quality", "video_movement_signal_quality", "protocol"])
+# df = pd.DataFrame(columns = ["participant_number", "slow_movement_signal_quality", "fast_movement_signal_quality", "video_movement_signal_quality", "protocol"])
+df = pd.DataFrame(columns = ["participant_number", "video_movement_signal_quality", "protocol"])
 
 #%% define methods
 
@@ -310,11 +311,12 @@ def verify_data(data_directory):
         for file_index in range(number_of_files):
           file_to_check = data_directory + "/" + event_files[file_index]
           data = files_handler.load_json(file_to_check)
-          if event_files[file_index] == "slow_movement.json":
-              __check_slow_movement_event_data(data)
-          elif event_files[file_index] == "fast_movement.json":
-              __check_fast_movement_event_data(data)
-          elif event_files[file_index] == "video_1.json":
+          #   if event_files[file_index] == "slow_movement.json":
+          #       __check_slow_movement_event_data(data)
+          #   elif event_files[file_index] == "fast_movement.json":
+          #       __check_fast_movement_event_data(data)
+          #el
+          if event_files[file_index] == "video_1.json":
               category_sequence_list = __check_video_segment_1_event_data(data)
           elif event_files[file_index] == "video_2.json":
               __check_video_segment_2_event_data(data, category_sequence_list[0])
