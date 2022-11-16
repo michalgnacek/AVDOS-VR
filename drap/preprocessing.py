@@ -395,8 +395,8 @@ class Manager():
         """
 
         VIDEO_ID_FOR_RESTING_VIDEO = -1
-        KEYWORD_SEGMENT_BEGINNING = "Start"
-        KEYWORD_SEGMENT_END = "End"
+        KEYWORD_VIDEO_BEGINNING = "Start"
+        KEYWORD_VIDEO_END = "End"
 
         # All experimental stages start with an Event saying "Playing ___"
         events_filter = experimental_events[experimental_events.Event.str.contains("Playing")]
@@ -423,12 +423,12 @@ class Manager():
         tstamps_start_videos = events_filter[events_filter.Event.str.startswith("Playing video number:")].copy()
         tstamps_start_videos["Segment"] = tstamps_start_videos["Session"].map(map_session_to_emotion) 
         tstamps_start_videos["VideoId"] = tstamps_start_videos.Event.str.split(":").apply( lambda x: int(x[1]))
-        tstamps_start_videos["Trigger"] = KEYWORD_SEGMENT_BEGINNING
+        tstamps_start_videos["Trigger"] = KEYWORD_VIDEO_BEGINNING
 
         tstamps_start_rest = events_filter [events_filter.Event.str.contains("Playing rest video")].copy()
         tstamps_start_rest["Segment"] = tstamps_start_rest["Session"].map(map_session_to_emotion)
         tstamps_start_rest["VideoId"] = VIDEO_ID_FOR_RESTING_VIDEO
-        tstamps_start_rest["Trigger"] = KEYWORD_SEGMENT_BEGINNING
+        tstamps_start_rest["Trigger"] = KEYWORD_VIDEO_BEGINNING
 
         ### Find events related to the end of each video, or rest stage
         events_filter_end = experimental_events[ experimental_events.Event.str.contains("Finished playing") ]
@@ -436,20 +436,54 @@ class Manager():
         tstamps_end_videos = events_filter_end [events_filter_end.Event.str.startswith("Finished playing video number:")].copy()
         tstamps_end_videos["Segment"] = tstamps_end_videos["Session"].map(map_session_to_emotion)
         tstamps_end_videos["VideoId"] = tstamps_end_videos.Event.str.split(":").apply( lambda x: int(x[1]))
-        tstamps_end_videos["Trigger"] = KEYWORD_SEGMENT_END
+        tstamps_end_videos["Trigger"] = KEYWORD_VIDEO_END
 
         tstamps_end_rest = events_filter_end [events_filter_end.Event.str.startswith("Finished playing rest video")].copy()
         tstamps_end_rest["Segment"] = tstamps_end_rest["Session"].map(map_session_to_emotion)
         tstamps_end_rest["VideoId"] = VIDEO_ID_FOR_RESTING_VIDEO
-        tstamps_end_rest["Trigger"] = KEYWORD_SEGMENT_END
+        tstamps_end_rest["Trigger"] = KEYWORD_VIDEO_END
 
         # Find the video Id playing per each group
         tstamps_total_segments = pd.concat([tstamps_start_videos,tstamps_start_rest,tstamps_end_videos,tstamps_end_rest])
+        # Sort index
         tstamps_total_segments.drop("Event", axis=1, inplace=True)
         tstamps_total_segments.sort_index(inplace=True)
         # tstamps_total_segments.reset_index(inplace=True) ## Do not uncomment, loading scripts always look for "Time" (config.DATA_HEADER_CSV) as index
 
-        return tstamps_total_segments
+
+        ## Find the beginning and end of a segment (Positive, Negative, Neutral)
+        VIDEO_ID_FOR_NO_EXPERIMENT_STAGE = np.nan
+        KEYWORD_SEGMENT_START = "StartSegment"
+        KEYWORD_SEGMENT_END = "EndSegment"
+
+        segment_events = tstamps_total_segments.copy(deep=True) #data_loader.segments[PARTICIPANT_IDX]
+        for session_filename in segment_events["Session"].unique():
+            # Filter events from the segment
+            Q = ( segment_events["Session"] == session_filename )
+            events_in_segment = segment_events[Q]
+
+            # Add a starting and end row with flagsg where the segment starts and finishes
+            # Start event
+            closest_timestamp_start = (events_in_segment.index[0]-0.001)
+            start_segment = events_in_segment.iloc[0,:].copy(deep=True)
+            start_segment.name = closest_timestamp_start
+            start_segment["VideoId"] = VIDEO_ID_FOR_NO_EXPERIMENT_STAGE
+            start_segment["Trigger"] = KEYWORD_SEGMENT_START
+
+            # End event
+            closest_timestamp_end = (events_in_segment.index[-1]+0.001)
+            end_segment = events_in_segment.iloc[-1,:].copy(deep=True)
+            end_segment.name = closest_timestamp_end
+            end_segment["VideoId"] = VIDEO_ID_FOR_NO_EXPERIMENT_STAGE
+            end_segment["Trigger"] = KEYWORD_SEGMENT_END
+
+            segment_events = pd.concat([segment_events, pd.DataFrame(start_segment).T, pd.DataFrame(end_segment).T],axis=0)
+
+        ## Segment the stages
+        segment_events.index.name = tstamps_total_segments.index.name
+        segment_events.sort_index(inplace=True)
+        
+        return segment_events #tstamps_total_segments
 
     def __load_index_file(self):
         """
@@ -671,7 +705,7 @@ class Manager():
         df_segments = df_segments[ df_segments["Segment"] == affective_segment]
 
         # Find the end of each video stage
-        video_id_end_timestamp = df_segments[ (df_segments["Trigger"]=="End") ]
+        video_id_end_timestamp = df_segments[ (df_segments["Trigger"]!="Start") ]
         video_id_end_timestamp = video_id_end_timestamp[ ["VideoId"] ]
         
         return video_id_end_timestamp
@@ -745,7 +779,8 @@ class Manager():
                                     participant_idx:int, 
                                     affective_segment:str,
                                     colnames_to_process:list=None,
-                                    sampling_frequency_hz=50):
+                                    sampling_frequency_hz=50,
+                                    set_timestamps_to_zero=True):
         """
         This function takes the data from all participants and returns
         a compiled dataset that combines the physiological data
@@ -757,46 +792,52 @@ class Manager():
         """
 
         PREFIX_RESTING_STAGE = "Resting_"
+        folder_id = self.index[participant_idx]['participant_id']
 
-        # Obtain video ids from the segment
+        # 1. Load physio data
+        data_rest, data_video = self.load_data_from_affect_segment(participant_idx, affective_segment, columns=colnames_to_process)
+
+        # 2. Resample the physiological data to FS
+        data_rest_resampled = resample_dataframe(data_rest, sampling_frequency_hz, keep_original_timestamps=True)
+        data_video_resampled = resample_dataframe(data_video, sampling_frequency_hz, keep_original_timestamps=True)
+
+        # 3. Load affective ratings
+        emotions_rest, emotions_video = self.load_emotions_from_affect_segment(participant_idx, affective_segment)
+
+        # 4. Obtain end timestamps for video ids and affect segment
         video_id_end_timestamp = self.calculate_video_id_end_timestamps(participant_idx, affective_segment)
 
-        # Load physio data
-        data_rest, data_video = self.load_data_from_affect_segment(participant_idx, affective_segment, columns=colnames_to_process)
-        # Merge with videoId
-        data_rest_merged = pd.merge_asof(data_rest, video_id_end_timestamp, left_index=True, right_index=True, direction="forward")
-        data_video_merged = pd.merge_asof(data_video, video_id_end_timestamp, left_index=True, right_index=True, direction="forward")
-        
-        # Load affective ratings
-        emotions_rest, emotions_video = self.load_emotions_from_affect_segment(participant_idx, affective_segment)
-        # Merge physio with affective ratings
+        # Merge data_rest with videoIds
+        data_rest_merged = pd.merge_asof(data_rest_resampled, video_id_end_timestamp, left_index=True, right_index=True, direction="forward")
         data_rest_merged = pd.merge_asof(data_rest_merged, emotions_rest, left_index=True, right_index=True)
-        data_video_merged = pd.merge_asof(data_video_merged, emotions_video, left_index=True, right_index=True)
-        
-        # Resample the data to FS
-        data_rest_resampled = resample_dataframe(data_rest_merged, sampling_frequency_hz)
-        data_video_resampled = resample_dataframe(data_video_merged, sampling_frequency_hz)
+        data_rest_merged.insert(0, "OriginalParticipantID", folder_id)
 
+        # Merge data_video with affective ratings
+        data_video_merged = pd.merge_asof(data_video_resampled, video_id_end_timestamp, left_index=True, right_index=True, direction="forward")
+        data_video_merged = pd.merge_asof(data_video_merged, emotions_video, left_index=True, right_index=True)
+        data_video_merged.insert(0, "OriginalParticipantID", folder_id)
+        
+        
+        ## Reset to zero the timestamps
+        if(set_timestamps_to_zero):
+            data_rest_merged.index -= data_rest_merged.index[0]
+            data_video_merged.index -= data_video_merged.index[0]
+
+        
         """ COMBINING DATASET IN A SINGLE ONE """
         if(self._verbose):
             print(f"\nAnalyzing participant {participant_idx} segment {affective_segment}")
-            print(f"Actual duration stage REST: {data_rest_resampled.index.max()} \tSHORT?:{data_rest_resampled.index.max()<115}")
-            print(f"Actual duration stage VIDEO: {data_video_resampled.index.max()} \tSHORT?:{data_video_resampled.index.max()<295}")
-            print(f"Total missing vals: REST={data_rest_resampled.isnull().sum().sum()} | VIDEO= {data_video_resampled.isnull().sum().sum()}")
-
-        # Add a column with the original participant ID corresponding to the original dataset
-        folder_id = self.index[participant_idx]['participant_id']
-        data_rest_resampled.insert(0, "OriginalParticipantID", folder_id)
-        data_video_resampled.insert(0, "OriginalParticipantID", folder_id)
+            print(f"Last timestamp stage REST: {data_rest_merged.index.max()} \tSHORT?:{(data_rest_merged.index.max()-data_rest_merged.index.min())<115}")
+            print(f"Last timestamp stage VIDEO: {data_video_merged.index.max()} \tSHORT?:{(data_video_merged.index.max()-data_rest_merged.index.min())<295}")
+            print(f"Total missing vals: REST={data_rest_merged.isnull().sum().sum()} | VIDEO= {data_video_merged.isnull().sum().sum()}")
 
         ### Generating multiindex to create a single .csv with all the data
         COLNAMES_MULTIINDEX = ["Participant","Stage"]
-        data_video_resampled = pd.concat({(participant_idx,affective_segment):data_video_resampled}, names = COLNAMES_MULTIINDEX)
-        data_rest_resampled = pd.concat({(participant_idx, PREFIX_RESTING_STAGE + affective_segment):data_rest_resampled}, names = COLNAMES_MULTIINDEX)
+        data_rest_merged = pd.concat({(participant_idx, PREFIX_RESTING_STAGE + affective_segment):data_rest_merged}, names = COLNAMES_MULTIINDEX)
+        data_video_merged = pd.concat({(participant_idx,affective_segment):data_video_merged}, names = COLNAMES_MULTIINDEX)
 
         # Final concatenation of resting and video stages
-        data_compiled = pd.concat([data_rest_resampled.copy(deep=True), data_video_resampled.copy(deep=True)])
-
+        data_compiled = pd.concat([data_rest_merged.copy(deep=True), data_video_merged.copy(deep=True)])
         return data_compiled
 
 
