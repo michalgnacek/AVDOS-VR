@@ -6,7 +6,7 @@
 # Created Date: 2022/04
 # =============================================================================
 """
-Classes to help loading DRAP in a structured way
+Classes to help loading AVDOS-VR in a structured way
 """
 # =============================================================================
 # Imports

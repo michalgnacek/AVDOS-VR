@@ -7,7 +7,7 @@
 # Created Date: 2022/04
 # =============================================================================
 """
-Constants to help loading the DRAP dataset
+Constants to help loading the dataset
 """
 # =============================================================================
 # Imports
