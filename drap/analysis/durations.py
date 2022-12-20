@@ -46,8 +46,6 @@ def calculate_signal_quality_check_duration(events):
 
 def get_durations_columns():
     durations_columns = ["participant", 
-                          "slow_movement_total_duration", "slow_movement_total_good_fit", "slowMovementTimeTakenToEstablishGoodSignal","slow_movement_signal_check_duration", "slow_movement_duration_excluding_signal_check", "slow_movement_good_fit_excluding_signal_check",
-                          "fast_movement_total_duration", "fast_movement_total_good_fit", "fastMovementTimeTakenToEstablishGoodSignal", "fast_movement_signal_check_duration", "fast_movement_duration_excluding_signal_check", "fast_movement_good_fit_excluding_signal_check",
                           "video_1_total_duration" ,"video_1_total_good_fit", "video_1_TimeTakenToEstablishGoodSignal", "video_1_signal_check_duration","video_1_duration_excluding_signal_check", "video_1_good_fit_excluding_signal_check",
                           "video_2_duration", "video_2_good_fit",
                           "video_3_duration", "video_3_good_fit",

@@ -14,16 +14,14 @@ from .utils import event_messages
 
 
 #%% Set variables
-
-expected_number_of_all_files = 10 # 14 - Moved from 14 to 10 because slow_movement and fast_movement files were deleted.
+expected_number_of_all_files = 10
 expected_number_of_event_files = expected_number_of_all_files/2
 minimum_expected_signal_quality = 8
 
 # Setting this to true will print more messages
 is_debug = False
 create_quality_csv_output_file = True
-# df = pd.DataFrame(columns = ["participant_number", "slow_movement_signal_quality", "fast_movement_signal_quality", "video_movement_signal_quality", "protocol"])
-df = pd.DataFrame(columns = ["participant_number", "video_movement_signal_quality", "protocol"])
+df = pd.DataFrame(columns = ["participant_number", "video_signal_quality", "protocol"])
 
 #%% define methods
 
@@ -32,60 +30,13 @@ def message_not_found(message):
      
 def message_found(message):
      print("Message found: ", message)
-
-def __check_slow_movement_event_data(slow_movement_event_data):
-    slow_movement_study_issues_found = False;
-    if(is_debug):
-        print("\nCHECKING SLOW MOVEMENT SEGMENT")
-    if __is_segment_signal_quality_good(slow_movement_event_data[1]['Event'], "Slow movement segment") == False:
-        slow_movement_study_issues_found = True
-    if slow_movement_event_data[0]['Event'] != event_messages.SLOW_MOVEMENT_SIGNAL_CHECK_MESSAGE:
-        message_not_found(event_messages.SLOW_MOVEMENT_SIGNAL_CHECK_MESSAGE)
-        slow_movement_study_issues_found = True
-    else:
-        if(is_debug):
-            message_found(event_messages.SLOW_MOVEMENT_SIGNAL_CHECK_MESSAGE)
-    if slow_movement_event_data[len(slow_movement_event_data)-1]['Event'] != event_messages.SLOW_MOVEMENT_FINISHED_MESSAGE:
-        message_not_found(event_messages.SLOW_MOVEMENT_FINISHED_MESSAGE)
-        slow_movement_study_issues_found = True
-    else:
-        if(is_debug):
-            message_found(event_messages.SLOW_MOVEMENT_FINISHED_MESSAGE)
-    if slow_movement_study_issues_found:
-        print("!!!!!!!!SLOW MOVEMENT SEGMENT ISSUE!!!!!!!!")
-    else:
-        if(is_debug):
-            print("SLOW MOVEMENT SEGMENT OK")
-        
-def __check_fast_movement_event_data(fast_movement_event_data):
-    fast_movement_study_issues_found = False;
-    if(is_debug):
-        print("\nCHECKING FAST MOVEMENT SEGMENT")
-    if __is_segment_signal_quality_good(fast_movement_event_data[1]['Event'], "Fast movement segment") == False:
-        fast_movement_study_issues_found = True
-    if fast_movement_event_data[0]['Event'] != event_messages.FAST_MOVEMENT_SIGNAL_CHECK_MESSAGE:
-        message_not_found(event_messages.FAST_MOVEMENT_SIGNAL_CHECK_MESSAGE)
-        fast_movement_study_issues_found = True
-    else:
-        if(is_debug):
-            message_found(event_messages.FAST_MOVEMENT_SIGNAL_CHECK_MESSAGE)
-    if fast_movement_event_data[len(fast_movement_event_data)-1]['Event'] != event_messages.FAST_MOVEMENT_FINISHED_MESSAGE:
-        message_not_found(event_messages.FAST_MOVEMENT_FINISHED_MESSAGE)
-        fast_movement_study_issues_found = True
-    else:
-        if(is_debug):
-            message_found(event_messages.FAST_MOVEMENT_FINISHED_MESSAGE)
-    if fast_movement_study_issues_found:
-        print("!!!!!!!!FAST MOVEMENT SEGMENT ISSUE!!!!!!!!")
-    else:
-        if(is_debug):
-            print("FAST MOVEMENT SEGMENT OK")
-        
+                
 def __check_video_segment_1_event_data(video_segment_1_event_data):
     video_segment_1_issues_found = False;
+    segment_number = 1
     if(is_debug):
-        print("\nCHECKING VIDEO SEGMENT 1")
-    if __is_segment_signal_quality_good(video_segment_1_event_data[1]['Event'], "Video segment") == False:
+        print(__checking_video_segment_message(segment_number))
+    if __is_segment_signal_quality_good(video_segment_1_event_data[segment_number]['Event'], "Video segment") == False:
         video_segment_1_issues_found = True
     if video_segment_1_event_data[0]['Event'] != event_messages.VIDEO_SIGNAL_CHECK_MESSAGE:
         message_not_found(event_messages.VIDEO_SIGNAL_CHECK_MESSAGE)
@@ -98,53 +49,63 @@ def __check_video_segment_1_event_data(video_segment_1_event_data):
         category_sequence_names = re.search('Category sequence:(.*)', event['Event'])
         if(category_sequence_names is not None):
             if(is_debug):
-                print(category_sequence_names.group(1)) 
+                print(category_sequence_names.group(segment_number)) 
         category_sequence_numbers = re.search('Category sequence array numbers:(.*)', event['Event'])
         if(category_sequence_numbers is not None):
             if(is_debug):
-                print(category_sequence_numbers.group(1))
-            category_sequence_list = category_sequence_numbers.group(1).split()
-            # for category in category_sequence_list:
-            #     category_sequence_list[category] = int(category.replace(',', ''))
+                print(category_sequence_numbers.group(segment_number))
+            category_sequence_list = category_sequence_numbers.group(segment_number).split()
             for i in range(len(category_sequence_list)):
                 category_sequence_list[i] = int(category_sequence_list[i].replace(',', ''))
     
     if video_segment_1_issues_found:
-        print("!!!!!!!!VIDEO SEGMENT 1 ISSUE!!!!!!!!")
+        print(__video_segment_issue_message(segment_number))
     else:
         if(is_debug):
-            print("VIDEO SEGMENT 1 OK")
+            print(__video_segment_ok_message(segment_number))
     return category_sequence_list
         
 def __check_video_segment_2_event_data(video_segment_2_event_data, segment_2_video_category):
+    segment_number = 2
     if(is_debug):
-        print("\nCHECKING VIDEO SEGMENT 2")
+        print(__checking_video_segment_message(segment_number))
     video_segment_2_issues_found = __check_video_segment_generic(video_segment_2_event_data, segment_2_video_category)
     if video_segment_2_issues_found:
-        print("!!!!!!!!VIDEO SEGMENT 2 ISSUE!!!!!!!!")
+        print(__video_segment_issue_message(segment_number))
     else:
         if(is_debug):
-            print("VIDEO SEGMENT 2 OK")
+            print(__video_segment_ok_message(segment_number))
     
 def __check_video_segment_3_event_data(video_segment_3_event_data, segment_3_video_category):
+    segment_number = 3
     if(is_debug):
-        print("\nCHECKING VIDEO SEGMENT 3")
+        print(__checking_video_segment_message(segment_number))
     video_segment_3_issues_found = __check_video_segment_generic(video_segment_3_event_data, segment_3_video_category)
     if video_segment_3_issues_found:
-        print("!!!!!!!!VIDEO SEGMENT 3 ISSUE!!!!!!!!")
+        print(__video_segment_issue_message(segment_number))
     else:
         if(is_debug):
-            print("VIDEO SEGMENT 3 OK")
+            print(__video_segment_ok_message(segment_number))
 
 def __check_video_segment_4_event_data(video_segment_4_event_data, segment_4_video_category):
+    segment_number = 4
     if(is_debug):
-        print("\nCHECKING VIDEO SEGMENT 4")
+        print(__checking_video_segment_message(segment_number))
     video_segment_4_issues_found = __check_video_segment_generic(video_segment_4_event_data, segment_4_video_category)
     if video_segment_4_issues_found:
-        print("!!!!!!!!VIDEO SEGMENT 4 ISSUE!!!!!!!!")
+        print(__video_segment_issue_message(segment_number))
     else:
         if(is_debug):
-            print("VIDEO SEGMENT 4 OK")
+            print(__video_segment_ok_message(segment_number))
+            
+def __checking_video_segment_message(video_segment_number):
+    return "\nCHECKING VIDEO SEGMENT " + video_segment_number
+
+def __video_segment_issue_message(video_segment_number):
+    return "!!!!!!!!VIDEO SEGMENT {} ISSUE!!!!!!!!".format(video_segment_number)
+
+def __video_segment_ok_message(video_segment_number):
+    return "VIDEO SEGMENT {} OK".format(video_segment_number) 
 
 def __check_video_segment_5_event_data(video_segment_5_event_data):
     video_segment_5_issues_found = False;
@@ -152,8 +113,9 @@ def __check_video_segment_5_event_data(video_segment_5_event_data):
     finished_playing_rest_video = False
     finished_playing_all_videos = False
     finished_video_ratings_study = False
+    segment_number = 5
     if(is_debug):
-        print("\nCHECKING VIDEO SEGMENT 5")    
+        print(__checking_video_segment_message(segment_number))    
     for event in video_segment_5_event_data:
         event_string = event['Event']
         if playing_rest_video == False:
@@ -191,10 +153,10 @@ def __check_video_segment_5_event_data(video_segment_5_event_data):
         video_segment_5_issues_found = True
                              
     if video_segment_5_issues_found:
-        print("!!!!!!!!VIDEO SEGMENT 5 ISSUE!!!!!!!!")
+        print(__video_segment_issue_message(segment_number))
     else:
         if(is_debug):
-            print("VIDEO SEGMENT 5 OK")
+            print(__video_segment_ok_message(segment_number))
 
 def __check_video_segment_generic(video_segment_event_data, expected_video_category_number):
     playing_rest_video = False
@@ -261,7 +223,6 @@ def __check_video_segment_generic(video_segment_event_data, expected_video_categ
         
               
 def __is_segment_signal_quality_good(signal_check_message, segment_name):
-    # signal_fit_value = re.search('= (\d)', data[1]['Event'])
     signal_fit_value = re.search('= (\d)', signal_check_message)
     if(signal_fit_value is None):
         print("No signal quality obtained for ", segment_name, "value: ", signal_fit_value, "expected: ", minimum_expected_signal_quality)
@@ -273,7 +234,7 @@ def __is_segment_signal_quality_good(signal_check_message, segment_name):
         elif("Fast" in segment_name):
              df.at[0, "fast_movement_signal_quality"] = signal_fit_value
         elif("Video" in segment_name):
-             df.at[0, "video_movement_signal_quality"] = signal_fit_value
+             df.at[0, "video_signal_quality"] = signal_fit_value
     if signal_fit_value < minimum_expected_signal_quality:
         print("Low signal quality was found for: ", segment_name, "value: ", signal_fit_value, "expected: ", minimum_expected_signal_quality)
         return False
@@ -291,7 +252,6 @@ def __get_event_files(list_of_all_files):
     
 #%% Verify data files
 
-#main_wd = os.getcwd()
 def verify_data(data_directory):
     print(" Running data check for: ", data_directory)
     participant_number = data_directory.split("participant_")[1]
@@ -307,15 +267,9 @@ def verify_data(data_directory):
         if(is_debug):
             print("\nCorrect number of event files was found: ", number_of_files)
         # Check events files for expected events for a finished study
-        #for file_index in range(6):
         for file_index in range(number_of_files):
           file_to_check = data_directory + "/" + event_files[file_index]
           data = files_handler.load_json(file_to_check)
-          #   if event_files[file_index] == "slow_movement.json":
-          #       __check_slow_movement_event_data(data)
-          #   elif event_files[file_index] == "fast_movement.json":
-          #       __check_fast_movement_event_data(data)
-          #el
           if event_files[file_index] == "video_1.json":
               category_sequence_list = __check_video_segment_1_event_data(data)
           elif event_files[file_index] == "video_2.json":
@@ -327,7 +281,7 @@ def verify_data(data_directory):
           elif event_files[file_index] == "video_5.json":
               __check_video_segment_5_event_data(data)
           else:
-              print("test")
+              print("ERROR. Video Segment not Recognised.")
     else:
         print("FILES MISSING! FOUND: ", number_of_files, "EXPECTED: ", expected_number_of_event_files)
     if(is_debug):    
