@@ -1,5 +1,5 @@
 - [Notes regarding data analysis](#notes-regarding-data-analysis)
-  - [DRAP](#drap)
+  - [AVDOSVR](#avdosvr)
   - [ETL2](#etl2)
     - [Data structure](#data-structure)
     - [Feature selection](#feature-selection)
@@ -23,9 +23,9 @@
 
 # Notes regarding data analysis
 
-## DRAP
+## AVDOSVR
 
-The paper analyzes the data `DRAP` originally with 43 subjects. Subjects `246` and `340` where excluded due to poor device fit. Data from participants `375` and `360` were excluded due to missing data. After preprocessing, subjects `340` and `369` were also excluded because they also have missing physiological data in `video2` containing only 56 seconds (out of 300s) and 71s of data, respectively. Subject `330` was excluded due to errors in timestamps during `video4` (see timestamps for frames 970 and 971). Therefore, the analysis includes in total the data from 37/43 participants.
+The paper analyzes the data `AVDOSVR` originally with 43 subjects. Subjects `246` and `340` where excluded due to poor device fit. Data from participants `375` and `360` were excluded due to missing data. After preprocessing, subjects `340` and `369` were also excluded because they also have missing physiological data in `video2` containing only 56 seconds (out of 300s) and 71s of data, respectively. Subject `330` was excluded due to errors in timestamps during `video4` (see timestamps for frames 970 and 971). Therefore, the analysis includes in total the data from 37/43 participants.
 
 ## ETL2
 

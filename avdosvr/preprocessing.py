@@ -70,7 +70,7 @@ def GetColnamesFromEmgMuscle(muscle:EmgMuscles):
         colnames.append( GetColnameEmg(emg_dtype, muscle) )
     return colnames
 
-## Shortcut to access DRAP colnames
+## Shortcut to access AVDOS-VR colnames
 
 COLNAMES_EMG_RAW = GetColnamesFromEmgVariableType(EmgVars.Raw)
 COLNAMES_EMG_FILTERED = GetColnamesFromEmgVariableType(EmgVars.Filtered)
@@ -120,7 +120,7 @@ class Manager():
     EVENTS_EXPERIMENT_FILENAME = "compiled_experimental_events.csv"
     SEGMENT_TIMESTAMPS_EXPERIMENT_FILENAME = "compiled_protocol_segment.csv"
     EMOTIONS_SUBJECTIVE_FILENAME = "compiled_emotion_ratings.csv"
-    JSON_INDEX_FILENAME = "drap_tree_index.json"
+    JSON_INDEX_FILENAME = "avdosvr_tree_index.json"
     SUMMARY_DF_FILENAME = "summary_data.csv"
 
     # MAIN VARIABLES TO ACCESS DATA
@@ -140,7 +140,7 @@ class Manager():
     emotions = None         # Dictionary of Pandas DataFrame with Subjective Emotions
     data = None             # Dictionary of Pandas DataFrame with Emteq Data
 
-    def __init__(self, drap_folder_root:str, 
+    def __init__(self, avdosvr_folder_root:str, 
                         verbose=False, 
                         force_index_regeneration:bool=False, 
                         index_files_path:str = None):
@@ -188,18 +188,18 @@ class Manager():
         :param force_index_regeneration: Forces regeneration of index, even if it exists:
         :type force_index_regeneration: bool
         :param index_files_path: Folder where the temp files for the index will be stored. If None, they
-                                are stored at the same level from the dataset in a folder called `temp/drap_index/`. 
+                                are stored at the same level from the dataset in a folder called `temp/avdosvr_index/`. 
         :type index_files_path: str
         :return: Dictionary
         :rtype: dict
         """
         
         # Define where main dataset is stored
-        self._folder_data_path = drap_folder_root
+        self._folder_data_path = avdosvr_folder_root
 
         # Define where temporary index files will be stored
         _temp_folder_index_files = index_files_path if (index_files_path is not None) else os.path.join(self._folder_data_path,"../temp")
-        _temp_folder_index_files = os.path.join(_temp_folder_index_files, "drap_index/")
+        _temp_folder_index_files = os.path.join(_temp_folder_index_files, "avdosvr_index/")
         self._index_file_path = os.path.join(_temp_folder_index_files, self.JSON_INDEX_FILENAME)
 
         # Debug Verbosity
@@ -848,8 +848,8 @@ class Manager():
 import sys, argparse
 
 _FILE_DESCRIPTION = f"""
-        This file generates an index for the dataset DRAP, to facilitate its analysis.
-        The index is stored in the folder "temp/drap_index/"
+        This file generates an index for the dataset AVDOS-VR, to facilitate its analysis.
+        The index is stored in the folder "temp/avdosvr_index/"
 
         The file is easier used in a notebook. See example in `notebook/1_preprocess...ipynb`
         """
@@ -863,11 +863,11 @@ def main(args):
     return
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(prog="DRAP dataset",
+    parser = argparse.ArgumentParser(prog="AVDOS-VR dataset",
                                         description=_FILE_DESCRIPTION,
-                                        epilog="See parameters running `python drap.preprocessing.py --help`")
+                                        epilog="See parameters running `python avdosvr.preprocessing.py --help`")
 
-    parser.add_argument("--dataset", type=str, required=True, help=f"Root path to the dataset DRAP")
+    parser.add_argument("--dataset", type=str, required=True, help=f"Root path to the dataset AVDOS-VR")
     parser.add_argument("-v", "--verbose", action='store_true', help=f"Show verbose output")
 
     args = parser.parse_args()

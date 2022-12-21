@@ -7,7 +7,7 @@
 # Created Date: 2022/04
 # =============================================================================
 """
-Enums help loading DRAP in a structured way
+Enums help loading the dataset in a structured way
 """
 # =============================================================================
 # Imports
