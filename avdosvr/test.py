@@ -14,7 +14,7 @@ except: # WORKS WITH .ipynb
     this_path = str(Path().absolute())+"/" 
 print("File Path:", this_path)
 
-# Add the level up to the file path so it recognizes the scripts inside `drap`
+# Add the level up to the file path so it recognizes the scripts inside `avdosvr`
 sys.path.append(os.path.join(this_path, ".."))
 
 #%%
@@ -23,27 +23,27 @@ import os
 import numpy as np
 import pandas as pd
 
-import drap
-from drap.verify_data import verify_data
-from drap.plots.plots import plot_sm_ppg, plot_fit_state
-from drap.utils.classes import Participant
-from drap.utils.files_handler import generate_complete_path
+import avdosvr
+from avdosvr.verify_data import verify_data
+from avdosvr.plots.plots import plot_sm_ppg, plot_fit_state
+from avdosvr.utils.classes import Participant
+from avdosvr.utils.files_handler import generate_complete_path
 
-from drap.analysis.average_ratings import calculate_average_arousal_valence_ratings, get_average_av_ratings_columns
-from drap.analysis.durations import calculate_good_signal_quality_duration, calculate_signal_quality_check_duration, get_durations_columns
-from drap.analysis.skip_participants import skip_participant
+from avdosvr.analysis.average_ratings import calculate_average_arousal_valence_ratings, get_average_av_ratings_columns
+from avdosvr.analysis.durations import calculate_good_signal_quality_duration, calculate_signal_quality_check_duration, get_durations_columns
+from avdosvr.analysis.skip_participants import skip_participant
 
-import drap.hrv.HRV_analysis_cloud as HRV
+import avdosvr.hrv.HRV_analysis_cloud as HRV
 
 # Hide warning about pandas Slicing
 pd.options.mode.chained_assignment = None
 
 #%% Set variables
 
-#Directory containing participant data downloaded from gnacek.com/DRAP
+#Directory containing participant data downloaded from gnacek.com/
 data_directory = (r"../data")
 # Identifier for the notebook when creating temp files
-NOTEBOOK_NAME = "DRAP_0_verify/" 
+NOTEBOOK_NAME = "0_verify/" 
 
 #Bool variables to enable/disable processing of segments of the data to speed up the runtime
 process_slow_movement = False
