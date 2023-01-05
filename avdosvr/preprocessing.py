@@ -655,7 +655,7 @@ class Manager():
             - video_tstamp_end: Timestamp when the corresponding video stage ended
             - video_filename: Filename of the file corresponding to the affective stage
         
-        :param participant_idx: Index of the participant (generally from 0 to 15)
+        :param participant_idx: Index of the participant (generally from 0 to 38)
         :param affective_segment: Unique key indicating which affective segment to access. See `AffectSegments(Enum)`
         :return: Tuple with five objects as described above.
         :rtype: Tuple
