@@ -3,9 +3,12 @@ data/*
 # Keep datasets' readme
 !data/README.md
 
+
+
 # Temporary calculation
 temp/
 notebooks/results/
+results/*
 
 #VS Code
 .vscode/
