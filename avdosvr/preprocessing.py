@@ -554,7 +554,8 @@ class Manager():
             for id, evt_path in self.index.items():
                 # Iterate over participants
                 self.emotions[id] = pd.read_csv(os.path.join(self._folder_data_path, evt_path["emotions"]), index_col=config.TIME_COLNAME)
-                self.emotions[id].drop_duplicates(keep="first", inplace=True)
+                ## LQ: Initially I had removed duplicates on the ratings.
+                # self.emotions[id].drop_duplicates(keep="first", inplace=True)
         return
 
     def __generate_basic_summary_df(self):
