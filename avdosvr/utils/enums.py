@@ -86,3 +86,22 @@ class AffectSegments(Enum):
     VideosNeutral = "Neutral"
     def __str__(self):
         return super().value.__str__()
+
+class AllSegments(Enum):
+    VideosPositive = "Positive"
+    VideosNegative = "Negative"
+    VideosNeutral = "Neutral"
+    RestPositive = "Resting_Positive"
+    RestNegative = "Resting_Negative"
+    RestNeutral = "Resting_Neutral"
+    def __str__(self):
+        return super().value.__str__()
+
+class colourPaletteRGB(Enum):
+    Negative = [0.92,0.39,0.29]
+    Neutral = [0.89,0.98,0.37]
+    Positive = [0.4,0.54,0.4]
+    Relax = [0.11,0.56,0.8]
+    def __str__(self):
+        return super().value.__str__()
+    
