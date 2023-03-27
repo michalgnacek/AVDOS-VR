@@ -36,15 +36,6 @@ def skip_participant(participantObject):
         participantObject.skip_video = True
         participantObject.skip_fm = True
         participantObject.skip_sm = True
-    if(participantObject.name == "participant_307"): #high alexithymia
-        participantObject.skip_video_5 = True
-        participantObject.skip_video_4 = True
-        participantObject.skip_video_3 = True
-        participantObject.skip_video_2 = True
-        participantObject.skip_video_1 = True
-        participantObject.skip_video = True
-        participantObject.skip_fm = True
-        participantObject.skip_sm = True
     if(participantObject.name == "participant_313"): #high alexithymia
         participantObject.skip_video_5 = True
         participantObject.skip_video_4 = True
