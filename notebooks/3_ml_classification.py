@@ -4,7 +4,7 @@
 # Check `2_affect...ipynb` to see details of the affect classification
 # 
 # This notebook runs the classification models using the file below, which is the feature-based dataset:
-# - Feature based: `/temp/2_affect/Dataset_AVDOSVR_ManualFeaturesHRVandStatistics.csv`
+# - Feature based: `/temp/2_affect/Dataset_AVDOS_ManualFeaturesWithAnnotations.csv`
 
 # %%
 # Add files to sys.path
@@ -12,7 +12,7 @@ from pathlib import Path
 import sys,os
 this_path = None
 try:    # WORKS WITH .py
-    this_path = str(os.path.dirname(os.path.abspath(__file__)))+"/"
+    this_path = str(os.path.dirname(os.path.abspath(__file__)))+"/" 
 except: # WORKS WITH .ipynb
     this_path = str(Path().absolute())+"/" 
 print("File Path:", this_path)
@@ -73,13 +73,12 @@ from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, classifica
 # Turn off chained assignment warning
 pd.options.mode.chained_assignment = None 
 
+
+
+#### DURING CROSS-VAL WHEN PRECISION=0
 from sklearn.exceptions import UndefinedMetricWarning
 import warnings
-# warnings.filterwarnings('ignore', category=UndefinedMetricWarning)   
-def warn(*args, **kwargs):
-    pass
-warnings.warn = warn
-
+warnings.filterwarnings('ignore', category=UndefinedMetricWarning) 
 
 # %% [markdown]
 # ---
@@ -101,8 +100,8 @@ NOTEBOOK_NAME = "3_ml"
 
 # MAIN FOLDERS FOR OUTPUT FILES
 ROOT = this_path + ""   # Root folder for all the files w.r.t this file
-TEMP_FOLDER = ROOT+"/temp/"  # Main folder for temp files with intermediate calculations
-RESULTS_FOLDER = ROOT+"/results/"    # Folder to recreate plots and results from analyses
+TEMP_FOLDER = ROOT+"temp/"  # Main folder for temp files with intermediate calculations
+RESULTS_FOLDER = ROOT+"results/"    # Folder to recreate plots and results from analyses
 
 EXPORT_PLOTS = True
 IMG_FORMAT = ".pdf"
@@ -141,7 +140,9 @@ def gen_path_results(filename, subfolders="", extension=""):
 # ### Load dataset with extracted features
 
 # %%
-FEATURE_BASED_DATASET_FILENAME = TEMP_FOLDER + "2_affect/Dataset_AVDOSVR_ManualFeaturesHRVandStatistics.csv"
+FEATURE_BASED_DATASET_FILENAME = TEMP_FOLDER + "2_affect/Dataset_AVDOS_ManualFeaturesWithAnnotations.csv"
+
+df_feature_extraction = None
 
 if (os.path.isfile(FEATURE_BASED_DATASET_FILENAME)):
     df_feature_extraction = pd.read_csv(FEATURE_BASED_DATASET_FILENAME)
@@ -182,6 +183,17 @@ CLASSES_MAPPING = {
 # %%
 df_feature_extraction
 
+# %% [markdown]
+# *Missing values*
+
+# %%
+df_feature_extraction.isna().sum().sum()
+
+# %%
+# Missing values are in the calculation of kurtosis and skewness - Impute forward
+df_feature_extraction = df_feature_extraction.fillna(method="ffill")
+df_feature_extraction.isna().sum().sum()
+
 # %%
 data_X = df_feature_extraction.loc[(df_feature_extraction['segment'] == 'Positive')  | 
                                    (df_feature_extraction['segment'] == 'Negative') | 
@@ -213,8 +225,20 @@ data_participant = data_participant.reset_index(drop=True)
 data_participant = data_participant.participant
 data_participant.value_counts().plot.bar()
 
+# %%
+len(list(set(data_participant)))
+
 # %% [markdown]
 # ### Feature selection per data modality
+
+# %%
+colname_prefix = {
+    "VALENCE": "Valence",
+    "AROUSAL": "Arousal",
+}
+
+annotations_colnames = data_X.columns[ [ (col.startswith( colname_prefix[TARGET_AFFECT_DIMENSION] )) for col in data_X.columns] ].sort_values().values
+annotations_colnames
 
 # %%
 hrv_colnames = data_X.columns[ [ (col.startswith("HRV") | col.startswith("HeartRate") | col.startswith("Ppg/")) for col in data_X.columns] ].sort_values().values
@@ -233,6 +257,7 @@ emg_cont_colnames = data_X.columns[ [ (col.startswith("Emg/Contact")) for col in
 emg_cont_colnames
 
 # %%
+print(f"Annotations: {annotations_colnames.size}")
 print(f"HRV {hrv_colnames.size}")
 print(f"IMU {imu_colnames.size}")
 print(f"EMG Amplitude {emg_amp_colnames.size}")
@@ -310,12 +335,13 @@ clf = KerasClassifier(
 # ### Apply classification task
 
 # %%
-data_modality_colnames = { 
-            "hrv": hrv_colnames, 
-            "imu": imu_colnames, 
-            "emg_amp": emg_amp_colnames,
-            "emg_cont": emg_cont_colnames,
-            "all": list(hrv_colnames) + list(imu_colnames) + list(emg_amp_colnames) + list(emg_cont_colnames),
+data_modality_colnames = {
+            "annotations": annotations_colnames,
+            # "hrv": hrv_colnames, 
+            # "imu": imu_colnames, 
+            # "emg_amp": emg_amp_colnames,
+            # "emg_cont": emg_cont_colnames,
+            # "all": list(hrv_colnames) + list(imu_colnames) + list(emg_amp_colnames) + list(emg_cont_colnames),
     }
 
 # ClassifierName: {"clf":model, "pgrid":parameters)
@@ -355,7 +381,7 @@ classifiers_hyperparams = {
 
 ## TARGET SUFFIX
 
-DATASET_POSTPROCESSED_FILENAME = gen_path_temp("Results_ModelTrainingCV_PerDataModalityPerSubject_37p_"+TARGET_AFFECT_DIMENSION, extension=".csv")
+DATASET_POSTPROCESSED_FILENAME = gen_path_temp("Results_37p_Annotations_"+TARGET_AFFECT_DIMENSION, extension=".csv")
 
 output_filename = DATASET_POSTPROCESSED_FILENAME
 
@@ -417,8 +443,7 @@ else:
                 cv_loso_fold = LeaveOneGroupOut()
                 cv_fold_per_subject = cv_loso_subj.split(x, y, groups = subjects_cv)
 
-                N_JOBS = 1 if clf_name=="DL" else 4
-                gr_search = GridSearchCV(clf, pgrid, cv=cv_fold_per_subject, scoring=SCORING_METRICS, refit="accuracy", n_jobs=N_JOBS)
+                gr_search = GridSearchCV(clf, pgrid, cv=cv_fold_per_subject, scoring=SCORING_METRICS, refit="accuracy", n_jobs=1)
                 gr_search.fit(x_scaled, y)
 
                 # Get results per fold and add best results
