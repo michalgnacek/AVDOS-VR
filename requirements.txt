@@ -11,3 +11,5 @@ seaborn==0.12.1
 peakutils==1.3.4
 nolds==0.5.2
 neurokit==0.2.0
+
+scikeras[tensorflow]
