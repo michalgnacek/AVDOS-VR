@@ -5,14 +5,14 @@ data/*
 
 # Temporary calculation
 notebooks/results/**
-notebooks/temp/**
+!notebooks/results/3_ml/
 
 
 ### Files that allow execution of notebook 3_ml.ipynb
-!**/Dataset_AVDOS_ManualFeaturesWithAnnotations.csv
-!**/Results_ModelTrainingCV_PerDataModalityPerSubject_37p_AROUSAL.csv
-!**/Results_ModelTrainingCV_PerDataModalityPerSubject_37p_VALENCE.csv
-!notebooks/results/3_ml/
+notebooks/temp/**
+!notebooks/temp/2_affect/Dataset_AVDOS_ManualFeaturesWithAnnotations.csv
+!notebooks/temp/2_affect/Results_ModelTrainingCV_PerDataModalityPerSubject_37p_AROUSAL.csv
+!notebooks/temp/2_affect/Results_ModelTrainingCV_PerDataModalityPerSubject_37p_VALENCE.csv
 
 
 #VS Code
