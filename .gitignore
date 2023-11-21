@@ -3,16 +3,17 @@ data/*
 # Keep datasets' readme
 !data/README.md
 
+# Temporary calculation
+notebooks/results/
+notebooks/temp/
+
+
 ### Files that allow execution of notebook 3_ml.ipynb
 !notebooks/temp/2_affect/Dataset_AVDOS_ManualFeaturesWithAnnotations.csv
 !notebooks/temp/3_ml/Results_ModelTrainingCV_PerDataModalityPerSubject_37p_AROUSAL.csv
 !notebooks/temp/3_ml/Results_ModelTrainingCV_PerDataModalityPerSubject_37p_VALENCE.csv
 !notebooks/results/3_ml/*
 
-# Temporary calculation
-temp/
-notebooks/results/
-results/*
 
 #VS Code
 .vscode/
