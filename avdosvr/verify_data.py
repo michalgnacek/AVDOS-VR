@@ -250,8 +250,6 @@ def __get_event_files(list_of_all_files):
             event_files.append(file)
     return sorted(event_files,  key=len)
     
-#%% Verify data files
-
 def verify_data(data_directory):
     print(" Running data check for: ", data_directory)
     participant_number = data_directory.split("participant_")[1]
